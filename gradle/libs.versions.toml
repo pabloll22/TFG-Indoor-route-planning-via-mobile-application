@@ -22,3 +22,6 @@ android-beacon-library = { group = "org.altbeacon", name = "android-beacon-libra
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+
+
+
