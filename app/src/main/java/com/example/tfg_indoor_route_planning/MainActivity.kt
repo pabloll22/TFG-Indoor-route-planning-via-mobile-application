@@ -20,6 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,10 +32,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// Modelos para la vectorización
-data class PointMeters(val x: Float, val y: Float)
-data class Wall(val start: PointMeters, val end: PointMeters)
+import com.example.tfg_indoor_route_planning.models.Node
+import com.example.tfg_indoor_route_planning.models.PointMeters
+import com.example.tfg_indoor_route_planning.models.Wall
 
 class MainActivity : ComponentActivity() {
 
@@ -42,16 +42,25 @@ class MainActivity : ComponentActivity() {
     private val devices = mutableStateListOf<ScanResult>()
     private var scanner: BluetoothLeScanner? = null
 
-    // --- CONFIGURACIÓN DE PAREDES (Extrae estos datos de tu SVG) ---
-    // Supongamos que el área de tu casa en el SVG es de 100x100 unidades
+    // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 100f 
     
     private val walls = listOf(
-        Wall(PointMeters(10f, 10f), PointMeters(90f, 10f)), // Pared superior
-        Wall(PointMeters(10f, 10f), PointMeters(10f, 80f)), // Pared izquierda
-        Wall(PointMeters(90f, 10f), PointMeters(90f, 80f)), // Pared derecha
-        Wall(PointMeters(10f, 80f), PointMeters(90f, 80f)), // Pared inferior
+        Wall(PointMeters(0f, 0f), PointMeters(100f, 0f)), // Pared superior
+        Wall(PointMeters(0f, 0f), PointMeters(0f, 100f)), // Pared izquierda
+        Wall(PointMeters(100f, 0f), PointMeters(100f, 100f)), // Pared derecha
+        Wall(PointMeters(0f, 100f), PointMeters(100f, 100f)), // Pared inferior
         Wall(PointMeters(40f, 10f), PointMeters(40f, 40f))  // Tabique interno
+    )
+
+    // --- LISTA DE NODOS (Puntos de interés/paso) ---
+    private val nodes = listOf(
+        Node("N1", PointMeters(15f, 15f), "Entrada"),
+        Node("N2", PointMeters(15f, 85f), "Habitación 1"),
+        Node("N3", PointMeters(85f, 15f), "Cocina"),
+        Node("N4", PointMeters(85f, 85f), "Salón"),
+        Node("N5", PointMeters(50f, 50f), "Pasillo"),
+        Node("N6", PointMeters(40f, 60f), "Punto Intermedio")
     )
 
     private val permissionLauncher = registerForActivityResult(
@@ -81,7 +90,7 @@ class MainActivity : ComponentActivity() {
                             Spacer(modifier = Modifier.height(16.dp))
                             MapSection(Modifier.weight(1f).fillMaxWidth())
                             Spacer(modifier = Modifier.height(16.dp))
-                            ListSection(Modifier.height(200.dp).fillMaxWidth())
+                            ListSection(Modifier.height(250.dp).fillMaxWidth())
                         }
                     }
                 }
@@ -96,23 +105,20 @@ class MainActivity : ComponentActivity() {
                 .border(2.dp, Color.Gray)
                 .background(Color.White)
         ) {
-            // Calculamos la escala entre las unidades del SVG y los píxeles de la pantalla
             val scaleX = constraints.maxWidth.toFloat() / viewSize
             val scaleY = constraints.maxHeight.toFloat() / viewSize
 
-            // 1. Plano de fondo (SVG convertido a Vector Drawable)
             Image(
-                painter = painterResource(id = R.drawable.plano_casa2),
+                painter = painterResource(id = R.drawable.plano_casa),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.FillBounds
             )
 
-            // 2. Dibujamos las paredes vectoriales (Capa lógica)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 walls.forEach { wall ->
                     drawLine(
-                        color = Color.Blue.copy(alpha = 0.5f), // Color semitransparente para verificar
+                        color = Color.Blue.copy(alpha = 0.3f),
                         start = Offset(wall.start.x * scaleX, wall.start.y * scaleY),
                         end = Offset(wall.end.x * scaleX, wall.end.y * scaleY),
                         strokeWidth = 4f
@@ -120,7 +126,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 3. Beacons detectados
+            // 1. Dibujamos los NODOS de navegación (Verde)
+            nodes.forEach { node ->
+                val xPos = node.position.x * scaleX
+                val yPos = node.position.y * scaleY
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .size(10.dp)
+                        .background(Color.Green, shape = CircleShape)
+                        .border(1.dp, Color.Black, CircleShape)
+                )
+            }
+
+            // 2. Beacons detectados (Rojo)
             devices.forEachIndexed { index, result ->
                 val xPos = (20 + (index * 15)) * scaleX
                 val yPos = (30 + (index * 10)) * scaleY
@@ -141,15 +161,32 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun ListSection(modifier: Modifier) {
         Column(modifier = modifier) {
-            Text("Beacons detectados:", style = MaterialTheme.typography.titleMedium)
-            LazyColumn {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item { 
+                    Text("Beacons detectados:", style = MaterialTheme.typography.titleSmall)
+                }
                 items(devices) { result ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = "ID: ${result.device.address.takeLast(5)}", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "RSSI: ${result.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "${result.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Divider()
+                }
+                
+                item { 
+                    Spacer(Modifier.height(16.dp))
+                    Text("Nodos de navegación:", style = MaterialTheme.typography.titleSmall)
+                }
+                items(nodes) { node ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "${node.id}: ${node.name ?: ""}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "(${node.position.x}, ${node.position.y})", style = MaterialTheme.typography.bodySmall)
                     }
                     Divider()
                 }
