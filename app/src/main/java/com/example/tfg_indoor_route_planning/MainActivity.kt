@@ -55,12 +55,87 @@ class MainActivity : ComponentActivity() {
 
     // --- LISTA DE NODOS (Puntos de interés/paso) ---
     private val nodes = listOf(
-        Node("N1", PointMeters(15f, 15f), "Entrada"),
-        Node("N2", PointMeters(15f, 85f), "Habitación 1"),
-        Node("N3", PointMeters(85f, 15f), "Cocina"),
-        Node("N4", PointMeters(85f, 85f), "Salón"),
-        Node("N5", PointMeters(50f, 50f), "Pasillo"),
-        Node("N6", PointMeters(40f, 60f), "Punto Intermedio")
+        Node("N1", PointMeters(20f, 5f), "Baño1"),
+        Node("N1", PointMeters(20f, 10f), "Baño1"),
+        Node("N1", PointMeters(20f, 15f), "Baño1"),
+        Node("N1", PointMeters(10f, 10f), "Baño1"),
+        Node("N1", PointMeters(15f, 10f), "Baño1"),
+        Node("N1", PointMeters(10f, 5f), "Baño1"),
+        Node("N1", PointMeters(15f, 5f), "Baño1"),
+
+        Node("N1", PointMeters(20f, 20f), "Pasillo"),
+        Node("N1", PointMeters(30f, 20f), "Pasillo"),
+        Node("N1", PointMeters(40f, 20f), "Pasillo"),
+        Node("N1", PointMeters(50f, 20f), "Pasillo"),
+        Node("N1", PointMeters(60f, 20f), "Pasillo"),
+
+        Node("N1", PointMeters(40f, 30f), "Hab1"),
+        Node("N1", PointMeters(40f, 40f), "Hab1"),
+        Node("N1", PointMeters(40f, 50f), "Hab1"),
+        Node("N1", PointMeters(30f, 30f), "Hab1"),
+        Node("N1", PointMeters(30f, 40f), "Hab1"),
+        Node("N1", PointMeters(30f, 50f), "Hab1"),
+
+        Node("N1", PointMeters(60f, 30f), "Hab2"),
+        Node("N1", PointMeters(60f, 40f), "Hab2"),
+        Node("N1", PointMeters(60f, 50f), "Hab2"),
+        Node("N1", PointMeters(50f, 30f), "Hab2"),
+        Node("N1", PointMeters(50f, 40f), "Hab2"),
+        Node("N1", PointMeters(50f, 50f), "Hab2"),
+
+
+        Node("N2", PointMeters(0f, 84f), "Terraza"),
+        Node("N3", PointMeters(10f, 84f), "Terraza"),
+        Node("N5", PointMeters(20f, 84f), "Terraza"),
+        Node("N7", PointMeters(30f, 84f), "Terraza"),
+        Node("N9", PointMeters(40f, 84f), "Terraza"),
+        Node("N10", PointMeters(50f, 84f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 80f), "Terraza"),
+        Node("N12", PointMeters(10f, 80f), "Terraza"),
+        Node("N13", PointMeters(20f, 80f), "Terraza"),
+        Node("N14", PointMeters(30f, 80f), "Terraza"),
+        Node("N15", PointMeters(40f, 80f), "Terraza"),
+        Node("N16", PointMeters(50f, 80f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 76f), "Terraza"),
+        Node("N12", PointMeters(10f, 76f), "Terraza"),
+        Node("N13", PointMeters(20f, 76f), "Terraza"),
+        Node("N14", PointMeters(30f, 76f), "Terraza"),
+        Node("N15", PointMeters(40f, 76f), "Terraza"),
+        Node("N16", PointMeters(50f, 76f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 72f), "Terraza"),
+        Node("N12", PointMeters(10f, 72f), "Terraza"),
+        Node("N13", PointMeters(20f, 72f), "Terraza"),
+        Node("N14", PointMeters(30f, 72f), "Terraza"),
+        Node("N15", PointMeters(40f, 72f), "Terraza"),
+        Node("N16", PointMeters(50f, 72f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 68f), "Terraza"),
+        Node("N12", PointMeters(10f, 68f), "Terraza"),
+        Node("N13", PointMeters(20f, 68f), "Terraza"),
+        Node("N14", PointMeters(30f, 68f), "Terraza"),
+        Node("N15", PointMeters(40f, 68f), "Terraza"),
+        Node("N16", PointMeters(50f, 68f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 64f), "Terraza"),
+        Node("N12", PointMeters(10f, 64f), "Terraza"),
+        Node("N13", PointMeters(20f, 64f), "Terraza"),
+        Node("N14", PointMeters(30f, 64f), "Terraza"),
+        Node("N15", PointMeters(40f, 64f), "Terraza"),
+        Node("N16", PointMeters(50f, 64f), "Terraza"),
+
+        Node("N11", PointMeters(0f, 60f), "Terraza"),
+        Node("N12", PointMeters(10f, 60f), "Terraza"),
+        Node("N13", PointMeters(20f, 60f), "Terraza"),
+        Node("N14", PointMeters(30f, 60f), "Terraza"),
+        Node("N15", PointMeters(40f, 60f), "Terraza"),
+        Node("N16", PointMeters(50f, 60f), "Terraza"),
+
+
+        Node("N13", PointMeters(85f, 85f), "Salón"),
+        Node("N14", PointMeters(50f, 50f), "Pasillo"),
     )
 
     private val permissionLauncher = registerForActivityResult(
