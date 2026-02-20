@@ -32,9 +32,12 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.models.Wall
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
 
@@ -42,9 +45,21 @@ class MainActivity : ComponentActivity() {
     private val devices = mutableStateListOf<ScanResult>()
     private var scanner: BluetoothLeScanner? = null
 
+    // --- NUEVO: ESTADO PARA LA POSICIÓN CALCULADA ---
+    private var userPosition by mutableStateOf<PointMeters?>(null)
+
+    // --- NUEVO: MAPA DE BEACONS CONOCIDOS Y SUS POSICIONES FIJAS ---
+    // Asocia la dirección MAC de cada beacon con su posición en el mapa.
+    private val knownBeacons = mapOf(
+        "F0:DD:31:0E:CA:81" to PointMeters(10f, 10f), // Beacon 1 en (10, 10)
+        "CC:06:A8:C7:B1:65" to PointMeters(80f, 15f), // Beacon 2 en (80, 15)
+        "CA:C2:BA:EA:CD:C5" to PointMeters(50f, 90f)  // Beacon 3 en (50, 90)
+        // Añade aquí las direcciones MAC y posiciones reales de tus beacons.
+    )
+
     // --- CONFIGURACIÓN DEL MAPA ---
-    private val viewSize = 100f 
-    
+    private val viewSize = 100f
+
     private val walls = listOf(
         Wall(PointMeters(0f, 0f), PointMeters(100f, 0f)), // Pared superior
         Wall(PointMeters(0f, 0f), PointMeters(0f, 100f)), // Pared izquierda
@@ -215,20 +230,29 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            // 2. Beacons detectados (Rojo)
-            devices.forEachIndexed { index, result ->
-                val xPos = (20 + (index * 15)) * scaleX
-                val yPos = (30 + (index * 10)) * scaleY
-
+            // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
+            knownBeacons.values.forEach { beaconPos ->
+                val xPos = beaconPos.x * scaleX
+                val yPos = beaconPos.y * scaleY
                 Box(
                     modifier = Modifier
                         .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
                         .size(12.dp)
-                        .background(Color.Red, shape = MaterialTheme.shapes.small),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("${result.rssi}", color = Color.White, fontSize = 8.sp)
-                }
+                        .background(Color.Red, shape = MaterialTheme.shapes.small)
+                )
+            }
+
+            // 3. NUEVO: Dibuja la posición calculada del usuario (Círculo Azul)
+            userPosition?.let { pos ->
+                val xPos = pos.x * scaleX
+                val yPos = pos.y * scaleY
+                Box(
+                    modifier = Modifier
+                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .size(15.dp)
+                        .background(Color.Blue, shape = CircleShape)
+                        .border(2.dp, Color.White, CircleShape)
+                )
             }
         }
     }
@@ -237,24 +261,44 @@ class MainActivity : ComponentActivity() {
     fun ListSection(modifier: Modifier) {
         Column(modifier = modifier) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                item { 
-                    Text("Beacons detectados:", style = MaterialTheme.typography.titleSmall)
+                item {
+                    Text("Beacons Holy-IOT Detectados:",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color(0xFF0066CC)) // Color azul para diferenciar
                 }
-                items(devices) { result ->
+
+                // Aquí volvemos a filtrar por seguridad para la UI
+                val filteredDevices = devices.filter { knownBeacons.containsKey(it.device.address) }
+
+                items(filteredDevices) { result ->
+                    val macAddress = result.device.address
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = "ID: ${result.device.address.takeLast(5)}", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "${result.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Holy-IOT (${macAddress.takeLast(5)})",
+                            style = MaterialTheme.typography.bodySmall)
+                        Text(text = "${result.rssi} dBm",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     Divider()
                 }
-                
-                item { 
+
+                if (filteredDevices.isEmpty()) {
+                    item {
+                        Text("Buscando beacons conocidos...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(8.dp))
+                    }
+                }
+
+                item {
                     Spacer(Modifier.height(16.dp))
                     Text("Nodos de navegación:", style = MaterialTheme.typography.titleSmall)
                 }
+                // ... (el resto de los nodos se mantiene igual)
                 items(nodes) { node ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -278,46 +322,69 @@ class MainActivity : ComponentActivity() {
         if (hasBlePermissions()) startScan() else permissionLauncher.launch(permissions.toTypedArray())
     }
 
+    // --- CÓDIGO ACTUALIZADO: SCAN CALLBACK ---
+    private val scanCallback = object : ScanCallback() {
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            super.onScanResult(callbackType, result)
+
+            val macAddress = result.device.address
+
+            // FILTRO ESTRICTO: Solo si la MAC está en mis beacons conocidos
+            if (knownBeacons.containsKey(macAddress)) {
+                val index = devices.indexOfFirst { it.device.address == macAddress }
+                if (index != -1) {
+                    devices[index] = result
+                } else {
+                    devices.add(result)
+                }
+                // Solo calculamos si es uno de los nuestros
+                val engine = PositioningEngine(knownBeacons)
+                userPosition = engine.calculateUserPosition(devices)
+            }
+        }
+
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            super.onBatchScanResults(results)
+            results?.forEach { result ->
+                val macAddress = result.device.address
+                if (knownBeacons.containsKey(macAddress)) {
+                    val index = devices.indexOfFirst { it.device.address == macAddress }
+                    if (index != -1) devices[index] = result else devices.add(result)
+                }
+            }
+            userPosition = PositioningEngine(knownBeacons).calculateUserPosition(devices)
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            Log.e(TAG, "onScanFailed: code $errorCode")
+        }
+    }
+
+    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT])
+    private fun startScan() {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        scanner = bluetoothManager.adapter.bluetoothLeScanner
+
+        if (scanner == null || !bluetoothManager.adapter.isMultipleAdvertisementSupported) {
+            Log.e(TAG, "El dispositivo no soporta escaneo BLE.")
+            return
+        }
+
+        val scanFilter = ScanFilter.Builder().build()
+        val scanSettings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+        scanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
+        Log.d(TAG, "Escaneo BLE iniciado...")
+    }
+
     private fun hasBlePermissions(): Boolean {
-        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             perms.add(Manifest.permission.BLUETOOTH_SCAN)
             perms.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
         return perms.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
-    }
-
-    private fun startScan() {
-        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val scannerLocal = bluetoothManager.adapter?.bluetoothLeScanner ?: return
-        scanner = scannerLocal
-        try {
-            scannerLocal.startScan(emptyList(), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build(), scanCallback)
-        } catch (e: SecurityException) { Log.e(TAG, "Error: ${e.message}") }
-    }
-
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val deviceName = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                        result.device.name
-                    } else null
-                } else result.device.name
-            } catch (e: SecurityException) { null }
-
-            if (deviceName != null && deviceName.contains("Holy-IOT", ignoreCase = true)) {
-                runOnUiThread {
-                    val idx = devices.indexOfFirst { it.device.address == result.device.address }
-                    if (idx != -1) devices[idx] = result else devices.add(result)
-                }
-            }
-        }
-    }
-
-    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
-    override fun onDestroy() {
-        super.onDestroy()
-        if (hasBlePermissions()) try { scanner?.stopScan(scanCallback) } catch (e: Exception) {}
     }
 }
