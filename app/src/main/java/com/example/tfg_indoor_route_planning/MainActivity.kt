@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,112 +48,32 @@ class MainActivity : ComponentActivity() {
 
     // --- NUEVO: ESTADO PARA LA POSICIÓN CALCULADA ---
     private var userPosition by mutableStateOf<PointMeters?>(null)
+    private val engine by lazy { PositioningEngine(knownBeacons) }
+    // 1. VARIABLE DE CONTROL DE TIEMPO
+    private var lastCalculationTime = 0L
+    // Variable para recordar la posición anterior suavizada (fuera del callback)
+    private var currentSmoothedPosition: PointMeters? = null
+
+    // Guarda la última posición que REALMENTE se pintó en pantalla
+    private var lastDrawnPosition: PointMeters? = null
+    // Distancia mínima en metros para actualizar el mapa (0.25f = 25 cm)
+    private val MOVEMENT_THRESHOLD_METERS = 0.25f
+
+    // Factor de suavizado (0.1 = muy lento/suave, 0.9 = muy rápido/ruidoso)
+    // 0.25f suele ser un buen equilibrio
+    private val ALPHA = 0.5f
 
     // --- NUEVO: MAPA DE BEACONS CONOCIDOS Y SUS POSICIONES FIJAS ---
     // Asocia la dirección MAC de cada beacon con su posición en el mapa.
     private val knownBeacons = mapOf(
-        "F0:DD:31:0E:CA:81" to PointMeters(10f, 10f), // Beacon 1 en (10, 10)
-        "CC:06:A8:C7:B1:65" to PointMeters(80f, 15f), // Beacon 2 en (80, 15)
-        "CA:C2:BA:EA:CD:C5" to PointMeters(50f, 90f)  // Beacon 3 en (50, 90)
+        "F0:DD:31:0E:CA:81" to PointMeters(3f, 3f), // Beacon 3
+        "CC:06:A8:C7:B1:65" to PointMeters(6f, 3f), // Beacon 2
+        "CA:C2:BA:EA:CD:C5" to PointMeters(4.5f, 6f)  // Beacon 1
         // Añade aquí las direcciones MAC y posiciones reales de tus beacons.
     )
 
     // --- CONFIGURACIÓN DEL MAPA ---
-    private val viewSize = 100f
-
-    private val walls = listOf(
-        Wall(PointMeters(0f, 0f), PointMeters(100f, 0f)), // Pared superior
-        Wall(PointMeters(0f, 0f), PointMeters(0f, 100f)), // Pared izquierda
-        Wall(PointMeters(100f, 0f), PointMeters(100f, 100f)), // Pared derecha
-        Wall(PointMeters(0f, 100f), PointMeters(100f, 100f)), // Pared inferior
-        Wall(PointMeters(40f, 10f), PointMeters(40f, 40f))  // Tabique interno
-    )
-
-    // --- LISTA DE NODOS (Puntos de interés/paso) ---
-    private val nodes = listOf(
-        Node("N1", PointMeters(20f, 5f), "Baño1"),
-        Node("N1", PointMeters(20f, 10f), "Baño1"),
-        Node("N1", PointMeters(20f, 15f), "Baño1"),
-        Node("N1", PointMeters(10f, 10f), "Baño1"),
-        Node("N1", PointMeters(15f, 10f), "Baño1"),
-        Node("N1", PointMeters(10f, 5f), "Baño1"),
-        Node("N1", PointMeters(15f, 5f), "Baño1"),
-
-        Node("N1", PointMeters(20f, 20f), "Pasillo"),
-        Node("N1", PointMeters(30f, 20f), "Pasillo"),
-        Node("N1", PointMeters(40f, 20f), "Pasillo"),
-        Node("N1", PointMeters(50f, 20f), "Pasillo"),
-        Node("N1", PointMeters(60f, 20f), "Pasillo"),
-
-        Node("N1", PointMeters(40f, 30f), "Hab1"),
-        Node("N1", PointMeters(40f, 40f), "Hab1"),
-        Node("N1", PointMeters(40f, 50f), "Hab1"),
-        Node("N1", PointMeters(30f, 30f), "Hab1"),
-        Node("N1", PointMeters(30f, 40f), "Hab1"),
-        Node("N1", PointMeters(30f, 50f), "Hab1"),
-
-        Node("N1", PointMeters(60f, 30f), "Hab2"),
-        Node("N1", PointMeters(60f, 40f), "Hab2"),
-        Node("N1", PointMeters(60f, 50f), "Hab2"),
-        Node("N1", PointMeters(50f, 30f), "Hab2"),
-        Node("N1", PointMeters(50f, 40f), "Hab2"),
-        Node("N1", PointMeters(50f, 50f), "Hab2"),
-
-
-        Node("N2", PointMeters(0f, 84f), "Terraza"),
-        Node("N3", PointMeters(10f, 84f), "Terraza"),
-        Node("N5", PointMeters(20f, 84f), "Terraza"),
-        Node("N7", PointMeters(30f, 84f), "Terraza"),
-        Node("N9", PointMeters(40f, 84f), "Terraza"),
-        Node("N10", PointMeters(50f, 84f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 80f), "Terraza"),
-        Node("N12", PointMeters(10f, 80f), "Terraza"),
-        Node("N13", PointMeters(20f, 80f), "Terraza"),
-        Node("N14", PointMeters(30f, 80f), "Terraza"),
-        Node("N15", PointMeters(40f, 80f), "Terraza"),
-        Node("N16", PointMeters(50f, 80f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 76f), "Terraza"),
-        Node("N12", PointMeters(10f, 76f), "Terraza"),
-        Node("N13", PointMeters(20f, 76f), "Terraza"),
-        Node("N14", PointMeters(30f, 76f), "Terraza"),
-        Node("N15", PointMeters(40f, 76f), "Terraza"),
-        Node("N16", PointMeters(50f, 76f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 72f), "Terraza"),
-        Node("N12", PointMeters(10f, 72f), "Terraza"),
-        Node("N13", PointMeters(20f, 72f), "Terraza"),
-        Node("N14", PointMeters(30f, 72f), "Terraza"),
-        Node("N15", PointMeters(40f, 72f), "Terraza"),
-        Node("N16", PointMeters(50f, 72f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 68f), "Terraza"),
-        Node("N12", PointMeters(10f, 68f), "Terraza"),
-        Node("N13", PointMeters(20f, 68f), "Terraza"),
-        Node("N14", PointMeters(30f, 68f), "Terraza"),
-        Node("N15", PointMeters(40f, 68f), "Terraza"),
-        Node("N16", PointMeters(50f, 68f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 64f), "Terraza"),
-        Node("N12", PointMeters(10f, 64f), "Terraza"),
-        Node("N13", PointMeters(20f, 64f), "Terraza"),
-        Node("N14", PointMeters(30f, 64f), "Terraza"),
-        Node("N15", PointMeters(40f, 64f), "Terraza"),
-        Node("N16", PointMeters(50f, 64f), "Terraza"),
-
-        Node("N11", PointMeters(0f, 60f), "Terraza"),
-        Node("N12", PointMeters(10f, 60f), "Terraza"),
-        Node("N13", PointMeters(20f, 60f), "Terraza"),
-        Node("N14", PointMeters(30f, 60f), "Terraza"),
-        Node("N15", PointMeters(40f, 60f), "Terraza"),
-        Node("N16", PointMeters(50f, 60f), "Terraza"),
-
-
-        Node("N13", PointMeters(85f, 85f), "Salón"),
-        Node("N14", PointMeters(50f, 50f), "Pasillo"),
-    )
-
+    private val viewSize = 10.7f
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -190,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun MapSection(modifier: Modifier) {
+        val density = LocalDensity.current // NUEVO: Obtenemos la densidad de la pantalla
         BoxWithConstraints(
             modifier = modifier
                 .border(2.dp, Color.Gray)
@@ -205,7 +127,7 @@ class MainActivity : ComponentActivity() {
                 contentScale = ContentScale.FillBounds
             )
 
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            /*Canvas(modifier = Modifier.fillMaxSize()) {
                 walls.forEach { wall ->
                     drawLine(
                         color = Color.Blue.copy(alpha = 0.3f),
@@ -228,15 +150,19 @@ class MainActivity : ComponentActivity() {
                         .background(Color.Green, shape = CircleShape)
                         .border(1.dp, Color.Black, CircleShape)
                 )
-            }
+            }*/
 
             // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
             knownBeacons.values.forEach { beaconPos ->
                 val xPos = beaconPos.x * scaleX
                 val yPos = beaconPos.y * scaleY
+
+                //Convertimos los Píxeles a Dp correctamente
+                val xDp = with(density) { xPos.toDp() }
+                val yDp = with(density) { yPos.toDp() }
                 Box(
                     modifier = Modifier
-                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .offset(x = xDp, y =yDp)
                         .size(12.dp)
                         .background(Color.Red, shape = MaterialTheme.shapes.small)
                 )
@@ -246,9 +172,12 @@ class MainActivity : ComponentActivity() {
             userPosition?.let { pos ->
                 val xPos = pos.x * scaleX
                 val yPos = pos.y * scaleY
+
+                val xDp = with(density) { xPos.toDp() }
+                val yDp = with(density) { yPos.toDp() }
                 Box(
                     modifier = Modifier
-                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .offset(x = xDp, y =yDp)
                         .size(15.dp)
                         .background(Color.Blue, shape = CircleShape)
                         .border(2.dp, Color.White, CircleShape)
@@ -294,7 +223,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                item {
+                /*item {
                     Spacer(Modifier.height(16.dp))
                     Text("Nodos de navegación:", style = MaterialTheme.typography.titleSmall)
                 }
@@ -308,7 +237,7 @@ class MainActivity : ComponentActivity() {
                         Text(text = "(${node.position.x}, ${node.position.y})", style = MaterialTheme.typography.bodySmall)
                     }
                     Divider()
-                }
+                }*/
             }
         }
     }
@@ -338,9 +267,36 @@ class MainActivity : ComponentActivity() {
                 } else {
                     devices.add(result)
                 }
-                // Solo calculamos si es uno de los nuestros
-                val engine = PositioningEngine(knownBeacons)
-                userPosition = engine.calculateUserPosition(devices)
+
+                val currentTime = System.currentTimeMillis()
+
+                // Solo recalculamos la posición si han pasado 500ms
+                if (currentTime - lastCalculationTime > 500) {
+
+                    // 1. Obtenemos la posición "cruda" (con ruido)
+                    val rawPosition = engine.calculateUserPosition(devices)
+
+                    // 2. Aplicamos el Filtro de Paso Bajo (Estrategia 1)
+                    if (rawPosition != null) {
+                        if (currentSmoothedPosition == null) {
+                            // Si es la primera vez, confiamos en el dato crudo
+                            currentSmoothedPosition = rawPosition
+                        } else {
+                            // Fórmula: (Nuevo * alpha) + (Anterior * (1 - alpha))
+                            val newX = (rawPosition.x * ALPHA) + (currentSmoothedPosition!!.x * (1 - ALPHA))
+                            val newY = (rawPosition.y * ALPHA) + (currentSmoothedPosition!!.y * (1 - ALPHA))
+
+                            currentSmoothedPosition = PointMeters(newX, newY)
+                        }
+
+                        // 3. Actualizamos la UI con el valor suavizado
+                        userPosition = currentSmoothedPosition
+
+                        Log.d(TAG, "Posición (Suavizada): $userPosition | Raw: $rawPosition")
+                    }
+
+                    lastCalculationTime = currentTime
+                }
             }
         }
 
@@ -353,7 +309,20 @@ class MainActivity : ComponentActivity() {
                     if (index != -1) devices[index] = result else devices.add(result)
                 }
             }
-            userPosition = PositioningEngine(knownBeacons).calculateUserPosition(devices)
+
+            // Aplicamos la misma lógica de suavizado para el Batch
+            val rawPosition = engine.calculateUserPosition(devices)
+
+            if (rawPosition != null) {
+                if (currentSmoothedPosition == null) {
+                    currentSmoothedPosition = rawPosition
+                } else {
+                    val newX = (rawPosition.x * ALPHA) + (currentSmoothedPosition!!.x * (1 - ALPHA))
+                    val newY = (rawPosition.y * ALPHA) + (currentSmoothedPosition!!.y * (1 - ALPHA))
+                    currentSmoothedPosition = PointMeters(newX, newY)
+                }
+                userPosition = currentSmoothedPosition
+            }
         }
 
         override fun onScanFailed(errorCode: Int) {
