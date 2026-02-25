@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
@@ -66,11 +67,51 @@ class MainActivity : ComponentActivity() {
     // --- NUEVO: MAPA DE BEACONS CONOCIDOS Y SUS POSICIONES FIJAS ---
     // Asocia la dirección MAC de cada beacon con su posición en el mapa.
     private val knownBeacons = mapOf(
-        "F0:DD:31:0E:CA:81" to PointMeters(3f, 3f), // Beacon 3
-        "CC:06:A8:C7:B1:65" to PointMeters(6f, 3f), // Beacon 2
-        "CA:C2:BA:EA:CD:C5" to PointMeters(4.5f, 6f)  // Beacon 1
-        // Añade aquí las direcciones MAC y posiciones reales de tus beacons.
+        "F0:DD:31:0E:CA:81" to PointMeters(1f, 1f), // Beacon 3
+        "CC:06:A8:C7:B1:65" to PointMeters(9f, 1f), // Beacon 2
+        "CA:C2:BA:EA:CD:C5" to PointMeters(4.5f, 10f)  // Beacon 1
     )
+
+    private val nodes = listOf(
+        // --- PASILLO (Eje Y = 2) ---
+        // N1 conectado a N2 (siguiente pasillo) y N11 (entrada Hab3)
+        Node("N1", PointMeters(2f, 2f), "Pasillo Inicio", neighbors = listOf("N2", "N13")),
+
+        // N2 conectado a N1 (atrás), N3 (adelante) y N5 (entrada Hab1)
+        Node("N2", PointMeters(4.25f, 2f), "Pasillo Centro", neighbors = listOf("N1", "N3", "N5")),
+
+        // N3 conectado a N2 (atrás), N4 (adelante) y N8 (entrada Hab2)
+        Node("N3", PointMeters(6.25f, 2f), "Pasillo Fondo", neighbors = listOf("N2", "N4", "N8")),
+
+        // N4 Final pasillo, conectado a N3 y N11 (entrada Hab Extra)
+        Node("N4", PointMeters(8f, 2f), "Pasillo Final", neighbors = listOf("N3", "N11")),
+
+        // --- HABITACIÓN 1 (X = 4.25) ---
+        // N5 es la puerta, conecta al Pasillo (N2) y adentro (N6)
+        Node("N5", PointMeters(4.25f, 3f), "Hab1 Puerta", neighbors = listOf("N2", "N6")),
+        Node("N6", PointMeters(4.25f, 4f), "Hab1 Centro", neighbors = listOf("N5", "N7")),
+        Node("N7", PointMeters(4.25f, 5f), "Hab1 Fondo", neighbors = listOf("N6")),
+
+        // --- HABITACIÓN 2 (X = 6.25) ---
+        Node("N8", PointMeters(6.25f, 3f), "Hab2 Puerta", neighbors = listOf("N3", "N9")),
+        Node("N9", PointMeters(6.25f, 4f), "Hab2 Centro", neighbors = listOf("N8", "N10")),
+        Node("N10", PointMeters(6.25f, 5f), "Hab2 Fondo", neighbors = listOf("N9")),
+
+        // --- HABITACIÓN EXTRA (X = 8) ---
+        Node("N11", PointMeters(8f, 3f), "Extra Puerta", neighbors = listOf("N4", "N12")),
+        Node("N12", PointMeters(8f, 4f), "Extra Fondo", neighbors = listOf("N11")),
+
+        // --- HABITACIÓN 3 (X = 2) ---
+        Node("N13", PointMeters(2f, 3f), "Hab3 Puerta", neighbors = listOf("N1", "N14")),
+        Node("N14", PointMeters(2f, 4f), "Hab3 Centro", neighbors = listOf("N13", "N15")),
+        Node("N15", PointMeters(2f, 5f), "Hab3 Fondo", neighbors = listOf("N14"))
+    )
+
+    // Instancias el motor del grafo
+    private val graphEngine = GraphEngine(nodes)
+
+    // Variable para pintar el nodo en la UI
+    private var activeNode: Node? = null
 
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
@@ -136,7 +177,7 @@ class MainActivity : ComponentActivity() {
                         strokeWidth = 4f
                     )
                 }
-            }
+            }*/
 
             // 1. Dibujamos los NODOS de navegación (Verde)
             nodes.forEach { node ->
@@ -150,7 +191,7 @@ class MainActivity : ComponentActivity() {
                         .background(Color.Green, shape = CircleShape)
                         .border(1.dp, Color.Black, CircleShape)
                 )
-            }*/
+            }
 
             // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
             knownBeacons.values.forEach { beaconPos ->
@@ -222,22 +263,6 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(8.dp))
                     }
                 }
-
-                /*item {
-                    Spacer(Modifier.height(16.dp))
-                    Text("Nodos de navegación:", style = MaterialTheme.typography.titleSmall)
-                }
-                // ... (el resto de los nodos se mantiene igual)
-                items(nodes) { node ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "${node.id}: ${node.name ?: ""}", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "(${node.position.x}, ${node.position.y})", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Divider()
-                }*/
             }
         }
     }
@@ -276,8 +301,8 @@ class MainActivity : ComponentActivity() {
                     // 1. Obtenemos la posición "cruda" (con ruido)
                     val rawPosition = engine.calculateUserPosition(devices)
 
-                    // 2. Aplicamos el Filtro de Paso Bajo (Estrategia 1)
                     if (rawPosition != null) {
+                        // 2. ESTRATEGIA 1: Filtro de Paso Bajo (Suavizado EMA)
                         if (currentSmoothedPosition == null) {
                             // Si es la primera vez, confiamos en el dato crudo
                             currentSmoothedPosition = rawPosition
@@ -289,10 +314,20 @@ class MainActivity : ComponentActivity() {
                             currentSmoothedPosition = PointMeters(newX, newY)
                         }
 
-                        // 3. Actualizamos la UI con el valor suavizado
-                        userPosition = currentSmoothedPosition
+                        // 3. ESTRATEGIA 3: Umbral de Movimiento (Deadband)
+                        // Calculamos cuánto nos hemos movido respecto a lo último que se dibujó
+                        val distanceMoved = if (lastDrawnPosition == null) {
+                            100f // Valor alto para forzar el primer pintado
+                        } else {
+                            sqrt((currentSmoothedPosition!!.x - lastDrawnPosition!!.x).pow(2) + (currentSmoothedPosition!!.y - lastDrawnPosition!!.y).pow(2))
+                        }
 
-                        Log.d(TAG, "Posición (Suavizada): $userPosition | Raw: $rawPosition")
+                        // Solo actualizamos la UI si el cambio es significativo (evita el "baile" del punto)
+                        if (distanceMoved >= MOVEMENT_THRESHOLD_METERS) {
+                            userPosition = currentSmoothedPosition // Actualizamos el estado de Compose
+                            lastDrawnPosition = currentSmoothedPosition
+                            Log.d(TAG, "Movimiento real: ${"%.2f".format(distanceMoved)}m. UI Actualizada.")
+                        }
                     }
 
                     lastCalculationTime = currentTime
@@ -308,20 +343,6 @@ class MainActivity : ComponentActivity() {
                     val index = devices.indexOfFirst { it.device.address == macAddress }
                     if (index != -1) devices[index] = result else devices.add(result)
                 }
-            }
-
-            // Aplicamos la misma lógica de suavizado para el Batch
-            val rawPosition = engine.calculateUserPosition(devices)
-
-            if (rawPosition != null) {
-                if (currentSmoothedPosition == null) {
-                    currentSmoothedPosition = rawPosition
-                } else {
-                    val newX = (rawPosition.x * ALPHA) + (currentSmoothedPosition!!.x * (1 - ALPHA))
-                    val newY = (rawPosition.y * ALPHA) + (currentSmoothedPosition!!.y * (1 - ALPHA))
-                    currentSmoothedPosition = PointMeters(newX, newY)
-                }
-                userPosition = currentSmoothedPosition
             }
         }
 

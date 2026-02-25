@@ -6,20 +6,15 @@ package com.example.tfg_indoor_route_planning.models
 data class Node(
     val id: String,
     val position: PointMeters,
-    val name: String? = null
+    val name: String? = null,
+    val neighbors: List<String> = emptyList()
 ) {
     // Lista de nodos adyacentes (conectados directamente)
-    val neighbors = mutableListOf<Node>()
+
 
     // Propiedades útiles para algoritmos de búsqueda (como A*)
     var gScore: Float = Float.POSITIVE_INFINITY
     var hScore: Float = 0f
     val fScore: Float get() = gScore + hScore
     var parent: Node? = null
-
-    fun addNeighbor(node: Node) {
-        if (!neighbors.contains(node)) {
-            neighbors.add(node)
-        }
-    }
 }
