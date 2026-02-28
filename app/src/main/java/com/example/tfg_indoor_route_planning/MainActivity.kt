@@ -97,21 +97,36 @@ class MainActivity : ComponentActivity() {
         Node("N9", PointMeters(6.25f, 4f), "Hab2 Centro", neighbors = listOf("N8", "N10")),
         Node("N10", PointMeters(6.25f, 5f), "Hab2 Fondo", neighbors = listOf("N9")),
 
-        // --- HABITACIÓN EXTRA (X = 8) ---
-        Node("N11", PointMeters(8f, 3f), "Extra Puerta", neighbors = listOf("N4", "N12")),
-        Node("N12", PointMeters(8f, 4f), "Extra Fondo", neighbors = listOf("N11")),
+        // --- ENTRADA (X = 8) ---
+        Node("N11", PointMeters(8f, 3f), "ENTRADA Puerta", neighbors = listOf("N4", "N12")),
+        Node("N12", PointMeters(8f, 4f), "ENTRADA Fondo", neighbors = listOf("N11", "N16")),
+
+        // --- SALON
+        Node("N16", PointMeters(8f, 5f), "SALON Puerta", neighbors = listOf("N12", "N16")),
+        Node("N17", PointMeters(8f, 6f), "SALON MEDIO 1", neighbors = listOf("N16", "N18")),
+        Node("N18", PointMeters(8f, 7f), "SALON MEDIO 2", neighbors = listOf("N17", "N19")),
+
+        //--- TERRAZA
+        Node("N19", PointMeters(6.25f, 7f), "TERRAZA Puerta", neighbors = listOf("N18", "N20")),
+        Node("N20", PointMeters(4.25F, 7f), "TERRAZA", neighbors = listOf("N19", "N21")),
+        Node("N23", PointMeters(4.25F, 8f), "TERRAZA", neighbors = listOf("N20", "N24")),
+        Node("N24", PointMeters(2F, 8f), "TERRAZA", neighbors = listOf("N23", "N21")),
+        Node("N21", PointMeters(2F, 7f), "TERRAZA", neighbors = listOf("N20", "N22")),
+        Node("N22", PointMeters(2F, 6f), "TERRAZA-HAB3", neighbors = listOf("N21", "N15")),
+
+
 
         // --- HABITACIÓN 3 (X = 2) ---
         Node("N13", PointMeters(2f, 3f), "Hab3 Puerta", neighbors = listOf("N1", "N14")),
         Node("N14", PointMeters(2f, 4f), "Hab3 Centro", neighbors = listOf("N13", "N15")),
-        Node("N15", PointMeters(2f, 5f), "Hab3 Fondo", neighbors = listOf("N14"))
+        Node("N15", PointMeters(2f, 5f), "Hab3 Fondo", neighbors = listOf("N14", "N22"))
     )
 
     // Instancias el motor del grafo
     private val graphEngine = GraphEngine(nodes)
 
     // Variable para pintar el nodo en la UI
-    private var activeNode: Node? = null
+    private var currentUserNode by mutableStateOf<Node?>(null)
 
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
@@ -224,6 +239,22 @@ class MainActivity : ComponentActivity() {
                         .border(2.dp, Color.White, CircleShape)
                 )
             }
+
+            // EL USO DE currentUserNode: Dibuja el nodo "imantado"
+            currentUserNode?.let { node ->
+                val xPos = node.position.x * scaleX
+                val yPos = node.position.y * scaleY
+
+                val xDp = with(density) { xPos.toDp() }
+                val yDp = with(density) { yPos.toDp() }
+                Box(
+                    modifier = Modifier
+                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .size(10.dp)
+                        .background(Color.Magenta, shape = CircleShape)
+                        .border(1.dp, Color.Black, CircleShape)
+                )
+            }
         }
     }
 
@@ -325,11 +356,17 @@ class MainActivity : ComponentActivity() {
                         // Solo actualizamos la UI si el cambio es significativo (evita el "baile" del punto)
                         if (distanceMoved >= MOVEMENT_THRESHOLD_METERS) {
                             userPosition = currentSmoothedPosition // Actualizamos el estado de Compose
-                            lastDrawnPosition = currentSmoothedPosition
-                            Log.d(TAG, "Movimiento real: ${"%.2f".format(distanceMoved)}m. UI Actualizada.")
+                            // Le pedimos al motor del grafo que busque el nodo lógico
+                            // usando la posición suavizada actual.
+                            val snappedNode = graphEngine.snapToGraph(currentSmoothedPosition!!)
+
+                            // Actualizamos la variable de estado para que la UI se repinte
+                             currentUserNode = snappedNode
+                            // -----------------------------------------------------------
+
+                            Log.d(TAG, "Movimiento: ${"%.2f".format(distanceMoved)}m. Nodo actual: ${snappedNode?.name}")
                         }
                     }
-
                     lastCalculationTime = currentTime
                 }
             }
