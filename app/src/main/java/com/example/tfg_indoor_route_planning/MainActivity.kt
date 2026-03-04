@@ -6,8 +6,10 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,21 +29,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
+import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.models.Wall
+import kotlinx.coroutines.launch
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.create
+import kotlin.jvm.java
 import kotlin.math.pow
 import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
+
+    private var knownBeacons by mutableStateOf<Map<String, PointMeters>>(emptyMap())
+    private var nodes by mutableStateOf<List<Node>>(emptyList())
+    private var planoFondo by mutableStateOf<ImageBitmap?>(null)
+    private var isLoading by mutableStateOf(true)
+    private var engine: PositioningEngine? = null
+    private var graphEngine: GraphEngine? = null
 
     private val TAG = "BLE_SCANNER"
     private val devices = mutableStateListOf<ScanResult>()
@@ -49,7 +67,6 @@ class MainActivity : ComponentActivity() {
 
     // --- NUEVO: ESTADO PARA LA POSICIÓN CALCULADA ---
     private var userPosition by mutableStateOf<PointMeters?>(null)
-    private val engine by lazy { PositioningEngine(knownBeacons) }
     // 1. VARIABLE DE CONTROL DE TIEMPO
     private var lastCalculationTime = 0L
     // Variable para recordar la posición anterior suavizada (fuera del callback)
@@ -63,71 +80,8 @@ class MainActivity : ComponentActivity() {
     // Factor de suavizado (0.1 = muy lento/suave, 0.9 = muy rápido/ruidoso)
     // 0.25f suele ser un buen equilibrio
     private val ALPHA = 0.5f
-
-    // --- NUEVO: MAPA DE BEACONS CONOCIDOS Y SUS POSICIONES FIJAS ---
-    // Asocia la dirección MAC de cada beacon con su posición en el mapa.
-    private val knownBeacons = mapOf(
-        "F0:DD:31:0E:CA:81" to PointMeters(1f, 1f), // Beacon 3
-        "CC:06:A8:C7:B1:65" to PointMeters(9f, 1f), // Beacon 2
-        "CA:C2:BA:EA:CD:C5" to PointMeters(4.5f, 10f)  // Beacon 1
-    )
-
-    private val nodes = listOf(
-        // --- PASILLO (Eje Y = 2) ---
-        // N1 conectado a N2 (siguiente pasillo) y N11 (entrada Hab3)
-        Node("N1", PointMeters(2f, 2f), "Pasillo Inicio", neighbors = listOf("N2", "N13")),
-
-        // N2 conectado a N1 (atrás), N3 (adelante) y N5 (entrada Hab1)
-        Node("N2", PointMeters(4.25f, 2f), "Pasillo Centro", neighbors = listOf("N1", "N3", "N5")),
-
-        // N3 conectado a N2 (atrás), N4 (adelante) y N8 (entrada Hab2)
-        Node("N3", PointMeters(6.25f, 2f), "Pasillo Fondo", neighbors = listOf("N2", "N4", "N8")),
-
-        // N4 Final pasillo, conectado a N3 y N11 (entrada Hab Extra)
-        Node("N4", PointMeters(8f, 2f), "Pasillo Final", neighbors = listOf("N3", "N11")),
-
-        // --- HABITACIÓN 1 (X = 4.25) ---
-        // N5 es la puerta, conecta al Pasillo (N2) y adentro (N6)
-        Node("N5", PointMeters(4.25f, 3f), "Hab1 Puerta", neighbors = listOf("N2", "N6")),
-        Node("N6", PointMeters(4.25f, 4f), "Hab1 Centro", neighbors = listOf("N5", "N7")),
-        Node("N7", PointMeters(4.25f, 5f), "Hab1 Fondo", neighbors = listOf("N6")),
-
-        // --- HABITACIÓN 2 (X = 6.25) ---
-        Node("N8", PointMeters(6.25f, 3f), "Hab2 Puerta", neighbors = listOf("N3", "N9")),
-        Node("N9", PointMeters(6.25f, 4f), "Hab2 Centro", neighbors = listOf("N8", "N10")),
-        Node("N10", PointMeters(6.25f, 5f), "Hab2 Fondo", neighbors = listOf("N9")),
-
-        // --- ENTRADA (X = 8) ---
-        Node("N11", PointMeters(8f, 3f), "ENTRADA Puerta", neighbors = listOf("N4", "N12")),
-        Node("N12", PointMeters(8f, 4f), "ENTRADA Fondo", neighbors = listOf("N11", "N16")),
-
-        // --- SALON
-        Node("N16", PointMeters(8f, 5f), "SALON Puerta", neighbors = listOf("N12", "N16")),
-        Node("N17", PointMeters(8f, 6f), "SALON MEDIO 1", neighbors = listOf("N16", "N18")),
-        Node("N18", PointMeters(8f, 7f), "SALON MEDIO 2", neighbors = listOf("N17", "N19")),
-
-        //--- TERRAZA
-        Node("N19", PointMeters(6.25f, 7f), "TERRAZA Puerta", neighbors = listOf("N18", "N20")),
-        Node("N20", PointMeters(4.25F, 7f), "TERRAZA", neighbors = listOf("N19", "N21")),
-        Node("N23", PointMeters(4.25F, 8f), "TERRAZA", neighbors = listOf("N20", "N24")),
-        Node("N24", PointMeters(2F, 8f), "TERRAZA", neighbors = listOf("N23", "N21")),
-        Node("N21", PointMeters(2F, 7f), "TERRAZA", neighbors = listOf("N20", "N22")),
-        Node("N22", PointMeters(2F, 6f), "TERRAZA-HAB3", neighbors = listOf("N21", "N15")),
-
-
-
-        // --- HABITACIÓN 3 (X = 2) ---
-        Node("N13", PointMeters(2f, 3f), "Hab3 Puerta", neighbors = listOf("N1", "N14")),
-        Node("N14", PointMeters(2f, 4f), "Hab3 Centro", neighbors = listOf("N13", "N15")),
-        Node("N15", PointMeters(2f, 5f), "Hab3 Fondo", neighbors = listOf("N14", "N22"))
-    )
-
-    // Instancias el motor del grafo
-    private val graphEngine = GraphEngine(nodes)
-
     // Variable para pintar el nodo en la UI
     private var currentUserNode by mutableStateOf<Node?>(null)
-
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
     private val permissionLauncher = registerForActivityResult(
@@ -139,6 +93,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
+        // Lanzamos la descarga nada más abrir la app
+        cargarDatosDesdeServidor()
         setContent {
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -182,17 +138,6 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.FillBounds
             )
-
-            /*Canvas(modifier = Modifier.fillMaxSize()) {
-                walls.forEach { wall ->
-                    drawLine(
-                        color = Color.Blue.copy(alpha = 0.3f),
-                        start = Offset(wall.start.x * scaleX, wall.start.y * scaleY),
-                        end = Offset(wall.end.x * scaleX, wall.end.y * scaleY),
-                        strokeWidth = 4f
-                    )
-                }
-            }*/
 
             // 1. Dibujamos los NODOS de navegación (Verde)
             nodes.forEach { node ->
@@ -298,6 +243,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun cargarDatosDesdeServidor() {
+        lifecycleScope.launch {
+            try {
+                val mapaDescargado = RetrofitClient.apiService.getMapa("1")
+
+                // Asignamos las variables a la interfaz
+                knownBeacons = mapaDescargado.knownBeacons
+                nodes = mapaDescargado.nodos
+
+                // Convertimos la imagen
+                planoFondo = base64ToImageBitmap(mapaDescargado.imagenBase64)
+
+                // Inicializamos los motores
+                 engine = PositioningEngine(knownBeacons)
+                 graphEngine = GraphEngine(nodes)
+
+                // Todo listo, quitamos la pantalla de carga
+                isLoading = false
+                Log.d("API_TFG", "¡Éxito! Nodos: ${nodes.size}, Ancho: $10,7 m")
+
+            } catch (e: Exception) {
+                Log.e("API_TFG", "Error al descargar los datos. Revisa la IP en BASE_URL.", e)
+            }
+        }
+    }
+
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -330,7 +301,7 @@ class MainActivity : ComponentActivity() {
                 if (currentTime - lastCalculationTime > 500) {
 
                     // 1. Obtenemos la posición "cruda" (con ruido)
-                    val rawPosition = engine.calculateUserPosition(devices)
+                    val rawPosition = engine?.calculateUserPosition(devices)
 
                     if (rawPosition != null) {
                         // 2. ESTRATEGIA 1: Filtro de Paso Bajo (Suavizado EMA)
@@ -358,7 +329,7 @@ class MainActivity : ComponentActivity() {
                             userPosition = currentSmoothedPosition // Actualizamos el estado de Compose
                             // Le pedimos al motor del grafo que busque el nodo lógico
                             // usando la posición suavizada actual.
-                            val snappedNode = graphEngine.snapToGraph(currentSmoothedPosition!!)
+                            val snappedNode = graphEngine?.snapToGraph(currentSmoothedPosition!!)
 
                             // Actualizamos la variable de estado para que la UI se repinte
                              currentUserNode = snappedNode
@@ -413,5 +384,21 @@ class MainActivity : ComponentActivity() {
             perms.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
         return perms.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    }
+
+    private fun base64ToImageBitmap(base64String: String): ImageBitmap? {
+        return try {
+            val cleanBase64 = if (base64String.contains(",")) {
+                base64String.split(",")[1]
+            } else {
+                base64String
+            }
+            val imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            bitmap.asImageBitmap()
+        } catch (e: Exception) {
+            Log.e("API_TFG", "Error decodificando la imagen Base64", e)
+            null
+        }
     }
 }
