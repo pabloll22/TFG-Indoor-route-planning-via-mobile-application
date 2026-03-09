@@ -2,6 +2,7 @@ package com.example.tfg_indoor_route_planning.logic
 
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
+import java.util.PriorityQueue
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -18,6 +19,7 @@ class GraphEngine(private val nodesList: List<Node>) {
     // Configuración: Umbral de histéresis (en metros)
     // El usuario debe estar 0.5m más cerca del nuevo nodo que del actual para cambiar.
     private val HYSTERESIS_THRESHOLD = 0.5f
+    private val nodeMap = nodesList.associateBy { it.id }
 
     /**
      * Calcula el nodo lógico más coherente basándose en la posición física.
@@ -63,6 +65,91 @@ class GraphEngine(private val nodesList: List<Node>) {
         }
 
         return currentUserNode
+    }
+
+    /**
+     * Calcula la ruta más corta entre dos nodos usando el algoritmo A*
+     */
+    fun findPath(startId: String, targetId: String): List<Node> {
+        val startNode = nodeMap[startId] ?: return emptyList()
+        val targetNode = nodeMap[targetId] ?: return emptyList()
+
+        // 1. Reiniciamos los valores de todos los nodos (por si calculamos varias rutas)
+        nodesList.forEach {
+            it.gScore = Float.POSITIVE_INFINITY
+            it.hScore = 0f
+            it.parent = null
+        }
+
+        // 2. Cola de prioridad que ordena los nodos por su fScore (el menor primero)
+        val openSet = PriorityQueue<Node>(compareBy { it.fScore })
+        val closedSet = mutableSetOf<String>() // Nodos ya evaluados
+
+        // 3. Inicializamos el nodo de salida
+        startNode.gScore = 0f
+        startNode.hScore = calculateHeuristic(startNode, targetNode)
+        openSet.add(startNode)
+
+        // 4. Bucle principal del algoritmo A*
+        while (openSet.isNotEmpty()) {
+            val current = openSet.poll() ?: break
+
+            // ¡Hemos llegado al destino!
+            if (current.id == targetId) {
+                return reconstructPath(current)
+            }
+
+            closedSet.add(current.id)
+
+            // Evaluamos a los vecinos
+            for (neighborId in current.neighbors) {
+                if (closedSet.contains(neighborId)) continue
+
+                val neighbor = nodeMap[neighborId] ?: continue
+
+                // Distancia real entre el nodo actual y este vecino
+                val tentativeGScore = current.gScore + calculateDistance(current, neighbor)
+
+                // Si hemos encontrado un camino mejor hacia este vecino...
+                if (tentativeGScore < neighbor.gScore) {
+                    neighbor.parent = current
+                    neighbor.gScore = tentativeGScore
+                    neighbor.hScore = calculateHeuristic(neighbor, targetNode)
+
+                    if (!openSet.contains(neighbor)) {
+                        openSet.add(neighbor)
+                    }
+                }
+            }
+        }
+
+        // Si la cola se vacía y no hemos devuelto la ruta, es que no hay camino posible
+        return emptyList()
+    }
+
+    // --- FUNCIONES AUXILIARES MATEMÁTICAS ---
+
+    // Reconstruye el camino yendo hacia atrás desde el destino hasta el inicio
+    private fun reconstructPath(endNode: Node): List<Node> {
+        val path = mutableListOf<Node>()
+        var current: Node? = endNode
+        while (current != null) {
+            path.add(current)
+            current = current.parent
+        }
+        return path.reversed() // Le damos la vuelta para que vaya de Inicio a Fin
+    }
+
+    // Distancia Euclidiana (Línea recta) entre dos nodos
+    private fun calculateDistance(nodeA: Node, nodeB: Node): Float {
+        val dx = nodeA.position.x - nodeB.position.x
+        val dy = nodeA.position.y - nodeB.position.y
+        return sqrt(dx.pow(2) + dy.pow(2))
+    }
+
+    // La heurística h(n) en A* suele ser la misma que la distancia euclidiana al destino
+    private fun calculateHeuristic(node: Node, target: Node): Float {
+        return calculateDistance(node, target)
     }
 
     /**

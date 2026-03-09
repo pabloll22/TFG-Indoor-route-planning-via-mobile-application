@@ -6,6 +6,14 @@ import retrofit2.http.Path
 
 
 interface MapApiService {
+
+    data class MapaResumen(
+        val mapaId: String,
+        val nombre: String
+    )
+
+    @GET("api/mapas")
+    suspend fun getTodosLosMapas(): List<MapaResumen>
     @GET("api/mapas/{mapa_id}")
     suspend fun getMapa(@Path("mapa_id") id: String): Mapa
 

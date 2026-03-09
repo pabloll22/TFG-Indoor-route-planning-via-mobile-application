@@ -34,21 +34,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.example.tfg_indoor_route_planning.api.MapApiService
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
-import com.example.tfg_indoor_route_planning.models.Wall
+import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import kotlinx.coroutines.launch
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.create
-import kotlin.jvm.java
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -84,6 +81,13 @@ class MainActivity : ComponentActivity() {
     private var currentUserNode by mutableStateOf<Node?>(null)
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
+    private var rutaCalculada by mutableStateOf<List<Node>>(emptyList())
+    private var destinoSeleccionadoId by mutableStateOf("N18")
+    private var destinoSeleccionado by mutableStateOf<String?>(null)
+    // Variables de estado para la lista principal
+    private var listaMapas by mutableStateOf<List<MapApiService.MapaResumen>>(emptyList())
+    private var cargandoLista by mutableStateOf(true) // Pantalla de carga inicial
+    private var mapaAbiertoId by mutableStateOf<String?>(null)
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -94,7 +98,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
         // Lanzamos la descarga nada más abrir la app
-        cargarDatosDesdeServidor()
+        /*cargarDatosDesdeServidor()
         setContent {
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -109,17 +113,117 @@ class MainActivity : ComponentActivity() {
                         }
                     } else {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Indoor Mapping - Holy-IOT", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(modifier = Modifier.height(16.dp))
+                            //Text("Indoor Mapping - Holy-IOT", style = MaterialTheme.typography.headlineMedium)
+                            //Spacer(modifier = Modifier.height(16.dp))
                             MapSection(Modifier.weight(1f).fillMaxWidth())
-                            Spacer(modifier = Modifier.height(16.dp))
-                            ListSection(Modifier.height(250.dp).fillMaxWidth())
+                            //Spacer(modifier = Modifier.height(16.dp))
+                            //ListSection(Modifier.height(250.dp).fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        }*/
+        setContent {
+            MaterialTheme {
+                val configuration = LocalConfiguration.current
+                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+                // 1. EFECTO DE CARGA INICIAL: Descarga la lista ligera al abrir la app
+                LaunchedEffect(Unit) {
+                    try {
+                        cargandoLista = true
+                        listaMapas = RetrofitClient.apiService.getTodosLosMapas()
+                        cargandoLista = false
+                    } catch (e: Exception) {
+                        Log.e("RED", "Error al bajar la lista: ${e.message}")
+                        cargandoLista = false
+                    }
+                }
+
+                Surface(modifier = Modifier.fillMaxSize()) {
+
+                    // =========================================================
+                    // PANTALLA 1: MENÚ PRINCIPAL (Lista de Facultades/Mapas)
+                    // =========================================================
+                    if (mapaAbiertoId == null) {
+                        if (cargandoLista) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator() // Ruedita de carga
+                            }
+                        } else {
+                            PantallaListaFacultades(
+                                lista = listaMapas,
+                                onFacultadClick = { idSeleccionado ->
+                                    mapaAbiertoId = idSeleccionado
+                                    cargarDatosDesdeServidor(idSeleccionado) // Inicia descarga pesada
+                                }
+                            )
+                        }
+                    }
+                    // =========================================================
+                    // PANTALLA 2: EL MAPA INTERACTIVO (¡Tu código responsive!)
+                    // =========================================================
+                    else {
+                        if (isLoading) {
+                            // Cargando el mapa específico pesado (Base64 y Nodos)
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else {
+                            // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
+                            Box(modifier = Modifier.fillMaxSize()) {
+
+                                // -----------------------------------------------------
+                                // AQUÍ EMPIEZA TU CÓDIGO ORIGINAL DE LANDSCAPE/PORTRAIT
+                                // -----------------------------------------------------
+                                if (isLandscape) {
+                                    Row(Modifier.padding(16.dp)) {
+                                        MapSection(
+                                            modifier = Modifier.weight(2f).fillMaxHeight(),
+                                            // ⚠️ RECUERDA PASAR AQUÍ LOS PARÁMETROS QUE AÑADIMOS ANTES:
+                                            // nodes = nodes,
+                                            // planoFondo = planoFondo,
+                                            // rutaCalculada = rutaCalculada,
+                                            // userPosition = userPosition,
+                                            // currentUserNode = currentUserNode,
+                                            // onNodeClick = { /* tu lógica de toque */ }
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        ListSection(Modifier.weight(1f).fillMaxHeight())
+                                    }
+                                } else {
+                                    Column(Modifier.padding(16.dp)) {
+                                        MapSection(
+                                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                                            // ⚠️ IGUAL AQUÍ, PASA LOS PARÁMETROS
+                                        )
+                                        // ListSection(Modifier.height(250.dp).fillMaxWidth())
+                                    }
+                                }
+
+                                // BOTÓN DE VOLVER A LA LISTA (Abajo a la derecha)
+                                FloatingActionButton(
+                                    onClick = {
+                                        mapaAbiertoId = null // Esto devuelve a la pantalla 1
+                                        rutaCalculada = emptyList() // Limpiamos la ruta
+                                        destinoSeleccionado = null // Limpiamos el destino
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(16.dp),
+                                    containerColor = Color(0xFF1E88E5)
+                                ) {
+                                    Text("Volver", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+
 
     @Composable
     fun MapSection(modifier: Modifier) {
@@ -132,25 +236,68 @@ class MainActivity : ComponentActivity() {
             val scaleX = constraints.maxWidth.toFloat() / viewSize
             val scaleY = constraints.maxHeight.toFloat() / viewSize
 
-            Image(
+            /*Image(
                 painter = painterResource(id = R.drawable.plano_casa),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.FillBounds
-            )
+            )*/
+
+            planoFondo?.let { miImagenDescargada ->
+                Image(
+                    // 2. Usamos 'bitmap =' en lugar de 'painter ='
+                    bitmap = miImagenDescargada,
+                    contentDescription = "Plano del edificio descargado",
+
+                    // 3. Mantén los modificadores que ya tuvieras, por ejemplo:
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.FillBounds
+                )
+            }
+
+            // Dibujamos la ruta debajo de los nodos para que no los tape
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                if (rutaCalculada.size > 1) {
+                    for (i in 0 until rutaCalculada.size - 1) {
+                        val startNode = rutaCalculada[i]
+                        val endNode = rutaCalculada[i + 1]
+
+                        drawLine(
+                            color = Color(0xFF00BCD4), // Color Cyan brillante para la ruta
+                            start = Offset((startNode.position.x * scaleX), (startNode.position.y * scaleY)),
+                            end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
+                            strokeWidth = 12f,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
+                }
+            }
 
             // 1. Dibujamos los NODOS de navegación (Verde)
             nodes.forEach { node ->
                 val xPos = node.position.x * scaleX
                 val yPos = node.position.y * scaleY
 
+                val xDp = with(density) { xPos.toDp() }
+                val yDp = with(density) { yPos.toDp() }
+
                 Box(
                     modifier = Modifier
-                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
-                        .size(10.dp)
+                        //.offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .offset(xDp-5.dp, yDp-5.dp)
+                        .size(12.dp)
                         .background(Color.Green, shape = CircleShape)
                         .border(1.dp, Color.Black, CircleShape)
-                )
+                ){
+                    Text(
+                        text = node.id,
+                        color = Color.Black,
+                        fontSize = 6.sp, // Letra microscópica para que quepa
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1, // Obligamos a que sea una sola línea
+                        softWrap = false // Evitamos que haga saltos de línea raros
+                    )
+                }
             }
 
             // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
@@ -194,7 +341,7 @@ class MainActivity : ComponentActivity() {
                 val yDp = with(density) { yPos.toDp() }
                 Box(
                     modifier = Modifier
-                        .offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
+                        .offset(x = xDp-5.dp, y = yDp-5.dp)
                         .size(10.dp)
                         .background(Color.Magenta, shape = CircleShape)
                         .border(1.dp, Color.Black, CircleShape)
@@ -243,10 +390,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun cargarDatosDesdeServidor() {
+    private fun cargarDatosDesdeServidor(idSeleccionado: String) {
         lifecycleScope.launch {
             try {
-                val mapaDescargado = RetrofitClient.apiService.getMapa("1")
+                val mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
 
                 // Asignamos las variables a la interfaz
                 knownBeacons = mapaDescargado.knownBeacons
@@ -330,6 +477,22 @@ class MainActivity : ComponentActivity() {
                             // Le pedimos al motor del grafo que busque el nodo lógico
                             // usando la posición suavizada actual.
                             val snappedNode = graphEngine?.snapToGraph(currentSmoothedPosition!!)
+
+
+                            if (snappedNode != null && snappedNode.id != currentUserNode?.id) {
+
+                                // ¡Ha cambiado de nodo! Recalculamos la ruta hacia el destino
+                                // (Asegúrate de tener la variable destinoSeleccionadoId definida arriba en tu MainActivity)
+                                val nuevaRuta = graphEngine?.findPath(snappedNode.id, destinoSeleccionadoId)
+
+                                if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
+                                    rutaCalculada = nuevaRuta
+                                    Log.d(TAG, "🔄 Ruta recalculada desde ${snappedNode.name}. Pasos: ${nuevaRuta.size}")
+                                } else {
+                                    rutaCalculada = emptyList() // Si llega a 0, ha llegado al final
+                                    Log.d(TAG, "✅ Has llegado al destino o no hay ruta posible.")
+                                }
+                            }
 
                             // Actualizamos la variable de estado para que la UI se repinte
                              currentUserNode = snappedNode
