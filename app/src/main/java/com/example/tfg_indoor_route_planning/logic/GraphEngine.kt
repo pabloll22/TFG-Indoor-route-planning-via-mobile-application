@@ -70,7 +70,7 @@ class GraphEngine(private val nodesList: List<Node>) {
     /**
      * Calcula la ruta más corta entre dos nodos usando el algoritmo A*
      */
-    fun findPath(startId: String, targetId: String): List<Node> {
+    fun findPath(startId: String, targetId: String?): List<Node> {
         val startNode = nodeMap[startId] ?: return emptyList()
         val targetNode = nodeMap[targetId] ?: return emptyList()
 

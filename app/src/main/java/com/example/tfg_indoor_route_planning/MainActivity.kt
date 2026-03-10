@@ -19,10 +19,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,6 +45,7 @@ import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.models.Node
+import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import kotlinx.coroutines.launch
@@ -82,12 +85,13 @@ class MainActivity : ComponentActivity() {
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
     private var rutaCalculada by mutableStateOf<List<Node>>(emptyList())
-    private var destinoSeleccionadoId by mutableStateOf("N18")
-    private var destinoSeleccionado by mutableStateOf<String?>(null)
+    private var destinoSeleccionadoId by mutableStateOf<String?>(null)
     // Variables de estado para la lista principal
     private var listaMapas by mutableStateOf<List<MapApiService.MapaResumen>>(emptyList())
     private var cargandoLista by mutableStateOf(true) // Pantalla de carga inicial
     private var mapaAbiertoId by mutableStateOf<String?>(null)
+    private var poiParaConfirmar by mutableStateOf<POI?>(null)
+    private var pois by mutableStateOf<List<POI>>(emptyList())
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -98,31 +102,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
         // Lanzamos la descarga nada más abrir la app
-        /*cargarDatosDesdeServidor()
-        setContent {
-            MaterialTheme {
-                val configuration = LocalConfiguration.current
-                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    if (isLandscape) {
-                        Row(Modifier.padding(16.dp)) {
-                            MapSection(Modifier.weight(2f).fillMaxHeight())
-                            Spacer(modifier = Modifier.width(16.dp))
-                            ListSection(Modifier.weight(1f).fillMaxHeight())
-                        }
-                    } else {
-                        Column(Modifier.padding(16.dp)) {
-                            //Text("Indoor Mapping - Holy-IOT", style = MaterialTheme.typography.headlineMedium)
-                            //Spacer(modifier = Modifier.height(16.dp))
-                            MapSection(Modifier.weight(1f).fillMaxWidth())
-                            //Spacer(modifier = Modifier.height(16.dp))
-                            //ListSection(Modifier.height(250.dp).fillMaxWidth())
-                        }
-                    }
-                }
-            }
-        }*/
         setContent {
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -181,12 +160,15 @@ class MainActivity : ComponentActivity() {
                                         MapSection(
                                             modifier = Modifier.weight(2f).fillMaxHeight(),
                                             // ⚠️ RECUERDA PASAR AQUÍ LOS PARÁMETROS QUE AÑADIMOS ANTES:
-                                            // nodes = nodes,
-                                            // planoFondo = planoFondo,
-                                            // rutaCalculada = rutaCalculada,
-                                            // userPosition = userPosition,
-                                            // currentUserNode = currentUserNode,
-                                            // onNodeClick = { /* tu lógica de toque */ }
+                                            nodes = nodes,
+                                            planoFondo = planoFondo,
+                                            rutaCalculada = rutaCalculada,
+                                            userPosition = userPosition,
+                                            currentUserNode = currentUserNode,
+                                             //onNodeClick = { /* tu lógica de toque */ }
+                                            onPoiClick = { poiTocado:POI ->
+                                                poiParaConfirmar = poiTocado // Abre el popup
+                                            }
                                         )
                                         Spacer(modifier = Modifier.width(16.dp))
                                         ListSection(Modifier.weight(1f).fillMaxHeight())
@@ -195,7 +177,15 @@ class MainActivity : ComponentActivity() {
                                     Column(Modifier.padding(16.dp)) {
                                         MapSection(
                                             modifier = Modifier.weight(1f).fillMaxWidth(),
+                                            nodes = nodes,
+                                            planoFondo = planoFondo,
+                                            rutaCalculada = rutaCalculada,
+                                            userPosition = userPosition,
+                                            currentUserNode = currentUserNode,
                                             // ⚠️ IGUAL AQUÍ, PASA LOS PARÁMETROS
+                                            onPoiClick = { poiTocado:POI ->
+                                                poiParaConfirmar = poiTocado // Abre el popup
+                                            },
                                         )
                                         // ListSection(Modifier.height(250.dp).fillMaxWidth())
                                     }
@@ -206,7 +196,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = {
                                         mapaAbiertoId = null // Esto devuelve a la pantalla 1
                                         rutaCalculada = emptyList() // Limpiamos la ruta
-                                        destinoSeleccionado = null // Limpiamos el destino
+                                        destinoSeleccionadoId = null // Limpiamos el destino
                                     },
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
@@ -214,6 +204,41 @@ class MainActivity : ComponentActivity() {
                                     containerColor = Color(0xFF1E88E5)
                                 ) {
                                     Text("Volver", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+
+                                // Si hemos tocado un POI, la variable ya no es nula y se dibuja esto encima de todo
+                                if (poiParaConfirmar != null) {
+                                    AlertDialog(
+                                        onDismissRequest = { poiParaConfirmar = null }, // Cierra si tocas fuera
+                                        title = {
+                                            Text(text = "Navegar a ${poiParaConfirmar!!.nombre}", fontWeight = FontWeight.Bold)
+                                        },
+                                        text = {
+                                            Text("¿Quieres calcular la ruta más rápida hacia este destino?")
+                                        },
+                                        confirmButton = {
+                                            Button(
+                                                onClick = {
+                                                    destinoSeleccionadoId = poiParaConfirmar!!.nodoId
+
+                                                    if (currentUserNode != null) {
+                                                        val nuevaRuta = graphEngine?.findPath(currentUserNode!!.id, destinoSeleccionadoId!!)
+                                                        rutaCalculada = nuevaRuta ?: emptyList()
+                                                    }
+
+                                                    poiParaConfirmar = null // Cerramos el popup
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                                            ) {
+                                                Text("Iniciar Ruta")
+                                            }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = { poiParaConfirmar = null }) {
+                                                Text("Cancelar", color = Color.Gray)
+                                            }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -226,7 +251,15 @@ class MainActivity : ComponentActivity() {
 
 
     @Composable
-    fun MapSection(modifier: Modifier) {
+    fun MapSection(
+        modifier: Modifier,
+        nodes: List<Node>,
+        planoFondo: ImageBitmap?,
+        rutaCalculada: List<Node>,
+        userPosition: PointMeters?,
+        currentUserNode: Node?,
+        onPoiClick: (POI) -> Unit
+    ) {
         val density = LocalDensity.current // NUEVO: Obtenemos la densidad de la pantalla
         BoxWithConstraints(
             modifier = modifier
@@ -235,13 +268,6 @@ class MainActivity : ComponentActivity() {
         ) {
             val scaleX = constraints.maxWidth.toFloat() / viewSize
             val scaleY = constraints.maxHeight.toFloat() / viewSize
-
-            /*Image(
-                painter = painterResource(id = R.drawable.plano_casa),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.FillBounds
-            )*/
 
             planoFondo?.let { miImagenDescargada ->
                 Image(
@@ -347,6 +373,33 @@ class MainActivity : ComponentActivity() {
                         .border(1.dp, Color.Black, CircleShape)
                 )
             }
+
+            // --- 2. DIBUJAMOS LOS POIs (Naranja) ---
+            pois.forEach { poi ->
+                // Buscamos las coordenadas del nodo al que pertenece este POI
+                val nodoDelPoi = nodes.find { it.id == poi.nodoId }
+
+                if (nodoDelPoi != null) {
+                    val xPos = nodoDelPoi.position.x * scaleX
+                    val yPos = nodoDelPoi.position.y * scaleY
+                    val xDp = with(density) { xPos.toDp() }
+                    val yDp = with(density) { yPos.toDp() }
+
+                    // Dibujamos un marcador naranja más grande para que el usuario lo toque
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .offset(x = xDp - 12.dp, y = yDp - 12.dp) // -12 porque mide 24
+                            .size(24.dp)
+                            .background(Color(0xFFFF9800), shape = RoundedCornerShape(8.dp)) // Naranja y cuadradito
+                            .border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                            .clickable { onPoiClick(poi) } // ¡EL CLICK AHORA ESTÁ AQUÍ!
+                    ) {
+                        // Un pequeño icono o inicial adentro
+                        Text("📍", fontSize = 12.sp)
+                    }
+                }
+            }
         }
     }
 
@@ -398,6 +451,7 @@ class MainActivity : ComponentActivity() {
                 // Asignamos las variables a la interfaz
                 knownBeacons = mapaDescargado.knownBeacons
                 nodes = mapaDescargado.nodos
+                pois = mapaDescargado.pois
 
                 // Convertimos la imagen
                 planoFondo = base64ToImageBitmap(mapaDescargado.imagenBase64)
