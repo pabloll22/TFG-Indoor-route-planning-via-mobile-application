@@ -1,6 +1,7 @@
 package com.example.tfg_indoor_route_planning
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
@@ -25,6 +26,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,14 +44,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.lifecycleScope
 import com.example.tfg_indoor_route_planning.api.MapApiService
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
+import com.example.tfg_indoor_route_planning.models.Mapa
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
+import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import kotlinx.coroutines.launch
 import kotlin.math.pow
@@ -84,6 +92,7 @@ class MainActivity : ComponentActivity() {
     private var currentUserNode by mutableStateOf<Node?>(null)
     // --- CONFIGURACIÓN DEL MAPA ---
     private val viewSize = 10.7f
+    private var mapaDescargado by mutableStateOf<Mapa?>(null)
     private var rutaCalculada by mutableStateOf<List<Node>>(emptyList())
     private var destinoSeleccionadoId by mutableStateOf<String?>(null)
     // Variables de estado para la lista principal
@@ -92,6 +101,8 @@ class MainActivity : ComponentActivity() {
     private var mapaAbiertoId by mutableStateOf<String?>(null)
     private var poiParaConfirmar by mutableStateOf<POI?>(null)
     private var pois by mutableStateOf<List<POI>>(emptyList())
+
+    @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -159,7 +170,6 @@ class MainActivity : ComponentActivity() {
                                     Row(Modifier.padding(16.dp)) {
                                         MapSection(
                                             modifier = Modifier.weight(2f).fillMaxHeight(),
-                                            // ⚠️ RECUERDA PASAR AQUÍ LOS PARÁMETROS QUE AÑADIMOS ANTES:
                                             nodes = nodes,
                                             planoFondo = planoFondo,
                                             rutaCalculada = rutaCalculada,
@@ -182,13 +192,23 @@ class MainActivity : ComponentActivity() {
                                             rutaCalculada = rutaCalculada,
                                             userPosition = userPosition,
                                             currentUserNode = currentUserNode,
-                                            // ⚠️ IGUAL AQUÍ, PASA LOS PARÁMETROS
                                             onPoiClick = { poiTocado:POI ->
                                                 poiParaConfirmar = poiTocado // Abre el popup
                                             },
                                         )
                                         // ListSection(Modifier.height(250.dp).fillMaxWidth())
                                     }
+                                }
+
+                                //Buscador de POI
+
+                                Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                                    BuscadorDestino(
+                                        pois = pois,
+                                        onPoiSelected = { poiSeleccionado ->
+                                            poiParaConfirmar = poiSeleccionado // Abre el popup de confirmación
+                                        }
+                                    )
                                 }
 
                                 // BOTÓN DE VOLVER A LA LISTA (Abajo a la derecha)
@@ -250,6 +270,7 @@ class MainActivity : ComponentActivity() {
 
 
 
+    @SuppressLint("UnusedBoxWithConstraintsScope")
     @Composable
     fun MapSection(
         modifier: Modifier,
@@ -446,15 +467,17 @@ class MainActivity : ComponentActivity() {
     private fun cargarDatosDesdeServidor(idSeleccionado: String) {
         lifecycleScope.launch {
             try {
-                val mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
+                mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
 
                 // Asignamos las variables a la interfaz
-                knownBeacons = mapaDescargado.knownBeacons
-                nodes = mapaDescargado.nodos
-                pois = mapaDescargado.pois
+                mapaDescargado?.let { mapa ->
+                    knownBeacons = mapa.knownBeacons
+                    nodes = mapa.nodos
+                    pois = mapa.pois
+                }
 
                 // Convertimos la imagen
-                planoFondo = base64ToImageBitmap(mapaDescargado.imagenBase64)
+                planoFondo = base64ToImageBitmap(mapaDescargado!!.imagenBase64)
 
                 // Inicializamos los motores
                  engine = PositioningEngine(knownBeacons)
@@ -470,6 +493,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

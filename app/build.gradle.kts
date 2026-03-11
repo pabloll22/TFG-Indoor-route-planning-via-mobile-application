@@ -59,6 +59,11 @@ dependencies {
     implementation(libs.androidx.ui.tooling)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+
+    // Iconos de Material Design para el buscador (Versión compatible con tu API 34)
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+
+    // Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
