@@ -16,6 +16,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,6 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -226,39 +233,103 @@ class MainActivity : ComponentActivity() {
                                     Text("Volver", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
                                 }
 
-                                // Si hemos tocado un POI, la variable ya no es nula y se dibuja esto encima de todo
-                                if (poiParaConfirmar != null) {
-                                    AlertDialog(
-                                        onDismissRequest = { poiParaConfirmar = null }, // Cierra si tocas fuera
-                                        title = {
-                                            Text(text = "Navegar a ${poiParaConfirmar!!.nombre}", fontWeight = FontWeight.Bold)
+                                // -----------------------------------------------------------------
+                                // BOTÓN DE CANCELAR RUTA (Aparece solo cuando hay una ruta calculada)
+                                // -----------------------------------------------------------------
+                                AnimatedVisibility(
+                                    visible = rutaCalculada.isNotEmpty(), // Solo se ve si hay línea azul en el mapa
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 32.dp), // Lo separamos un poco del borde inferior
+                                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                                ) {
+                                    ExtendedFloatingActionButton(
+                                        onClick = {
+                                            // ¡Magia! Al vaciar estas variables, el mapa borra la línea automáticamente
+                                            rutaCalculada = emptyList()
+                                            destinoSeleccionadoId = null
+                                        },
+                                        containerColor = Color(0xFFD32F2F), // Rojo elegante (Material Red 700)
+                                        contentColor = Color.White,
+                                        icon = {
+                                            Icon(Icons.Default.Close, contentDescription = "Detener")
                                         },
                                         text = {
-                                            Text("¿Quieres calcular la ruta más rápida hacia este destino?")
-                                        },
-                                        confirmButton = {
-                                            Button(
-                                                onClick = {
-                                                    destinoSeleccionadoId = poiParaConfirmar!!.nodoId
-
-                                                    if (currentUserNode != null) {
-                                                        val nuevaRuta = graphEngine?.findPath(currentUserNode!!.id, destinoSeleccionadoId!!)
-                                                        rutaCalculada = nuevaRuta ?: emptyList()
-                                                    }
-
-                                                    poiParaConfirmar = null // Cerramos el popup
-                                                },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
-                                            ) {
-                                                Text("Iniciar Ruta")
-                                            }
-                                        },
-                                        dismissButton = {
-                                            TextButton(onClick = { poiParaConfirmar = null }) {
-                                                Text("Cancelar", color = Color.Gray)
-                                            }
+                                            Text("Detener ruta", fontWeight = FontWeight.Bold)
                                         }
                                     )
+                                }
+
+
+                                // -----------------------------------------------------------------
+                                // TARJETA INFERIOR
+                                // -----------------------------------------------------------------
+                                // AnimatedVisibility hace que la tarjeta entre deslizando desde abajo en vez de aparecer de golpe
+                                AnimatedVisibility(
+                                    visible = poiParaConfirmar != null,
+                                    modifier = Modifier.align(Alignment.BottomCenter),
+                                    enter = slideInVertically(initialOffsetY = { it }), // Entra desde abajo
+                                    exit = slideOutVertically(targetOffsetY = { it })   // Sale hacia abajo
+                                ) {
+                                    poiParaConfirmar?.let { poi ->
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            // Forma de Bottom Sheet: Arriba redondeado, abajo recto
+                                            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                                        ) {
+                                            Column(modifier = Modifier.padding(24.dp)) {
+
+                                                // 1. Fila superior: Título y botón de la X
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = poi.nombre,
+                                                            fontSize = 22.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.Black
+                                                        )
+                                                        Text(text = "Punto de interés", color = Color.Gray, fontSize = 14.sp)
+                                                    }
+                                                    // Botón para cerrar la tarjeta sin hacer nada
+                                                    IconButton(onClick = { poiParaConfirmar = null }) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(24.dp))
+
+                                                // 2. Botón gigante de "Cómo llegar"
+                                                Button(
+                                                    onClick = {
+                                                        destinoSeleccionadoId = poi.nodoId
+
+                                                        if (currentUserNode != null) {
+                                                            val nuevaRuta = graphEngine?.findPath(currentUserNode!!.id, destinoSeleccionadoId!!)
+                                                            rutaCalculada = nuevaRuta ?: emptyList()
+                                                        }
+
+                                                        poiParaConfirmar = null // Ocultamos la tarjeta cuando inicia la ruta
+                                                    },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(50.dp), // Botón más gordito para que sea fácil de pulsar
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Directions, contentDescription = "Cómo llegar", tint = Color.White)
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Cómo llegar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
