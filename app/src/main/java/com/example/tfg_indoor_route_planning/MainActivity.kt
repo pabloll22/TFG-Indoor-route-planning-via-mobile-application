@@ -122,6 +122,8 @@ class MainActivity : ComponentActivity() {
         checkAndRequestPermissions()
         // Lanzamos la descarga nada más abrir la app
         setContent {
+            var modoNavegacionActiva by remember { mutableStateOf(false) }
+            var origenSeleccionadoId by remember { mutableStateOf<String?>(null) }
             MaterialTheme {
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -170,7 +172,6 @@ class MainActivity : ComponentActivity() {
                         } else {
                             // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
                             Box(modifier = Modifier.fillMaxSize()) {
-
                                 // -----------------------------------------------------
                                 // AQUÍ EMPIEZA TU CÓDIGO ORIGINAL DE LANDSCAPE/PORTRAIT
                                 // -----------------------------------------------------
@@ -209,18 +210,31 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 //Buscador de POI
-
                                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                                     BuscadorDestino(
-                                        pois = pois,
-                                        onPoiSelected = { poiSeleccionado ->
-                                            poiParaConfirmar = poiSeleccionado // Abre el popup de confirmación
+                                        pois = mapaDescargado?.pois ?: emptyList(),
+                                        onSoloVerDestino = { poiSeleccionado ->
+                                            poiParaConfirmar = poiSeleccionado
+                                        },
+                                        onRutaConfirmada = { origenId, destinoPoi ->
+                                            val idInicio = origenId ?: currentUserNode?.id
+                                            val idFin = destinoPoi.nodoId
+
+                                            if (idInicio != null) {
+                                                val nuevaRuta = graphEngine?.findPath(idInicio, idFin)
+                                                rutaCalculada = nuevaRuta ?: emptyList()
+
+                                                modoNavegacionActiva = (origenId == null)
+                                            }
+                                            poiParaConfirmar = null
+                                            //focusManager.clearFocus()
                                         }
                                     )
                                 }
 
                                 ControlesNavegacion(
                                     hayRutaActiva = rutaCalculada.isNotEmpty(),
+                                    modoNavegacionActiva = modoNavegacionActiva,
                                     poiParaConfirmar = poiParaConfirmar,
 
                                     // Le decimos qué hacer cuando pulse "Volver"
@@ -229,12 +243,14 @@ class MainActivity : ComponentActivity() {
                                         rutaCalculada = emptyList()
                                         destinoSeleccionadoId = null
                                         poiParaConfirmar = null // También cerramos la tarjeta por si acaso
+                                        modoNavegacionActiva = false
                                     },
 
                                     // Le decimos qué hacer cuando pulse "Detener Ruta"
                                     onDetenerRutaClick = {
                                         rutaCalculada = emptyList()
                                         destinoSeleccionadoId = null
+                                        modoNavegacionActiva = false
                                     },
 
                                     // Le decimos qué hacer cuando pulse la "X" de la tarjeta
@@ -248,6 +264,7 @@ class MainActivity : ComponentActivity() {
                                         if (currentUserNode != null) {
                                             val nuevaRuta = graphEngine?.findPath(currentUserNode!!.id, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
+                                            modoNavegacionActiva = true
                                         }
                                         poiParaConfirmar = null // Ocultamos la tarjeta al arrancar
                                     }

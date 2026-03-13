@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -23,11 +24,12 @@ import com.example.tfg_indoor_route_planning.models.POI
 @Composable
 fun BoxScope.ControlesNavegacion(
     hayRutaActiva: Boolean,
+    modoNavegacionActiva: Boolean,
     poiParaConfirmar: POI?,
     onVolverClick: () -> Unit,
     onDetenerRutaClick: () -> Unit,
     onCerrarTarjetaClick: () -> Unit,
-    onComoLlegarClick: (POI) -> Unit
+    onComoLlegarClick: (POI) -> Unit,
 ) {
     // -----------------------------------------------------------------
     // BOTÓN DE VOLVER A LA LISTA
@@ -59,15 +61,26 @@ fun BoxScope.ControlesNavegacion(
     ) {
         ExtendedFloatingActionButton(
             onClick = onDetenerRutaClick,
-            containerColor = Color(0xFFD32F2F),
+            // Si es navegación real (desde tu ubicación) es Rojo. Si es vista previa (desde otro sitio) es Gris.
+            containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray,
             contentColor = Color.White,
-            icon = { Icon(Icons.Default.Close, contentDescription = "Detener") },
-            text = { Text("Detener ruta", fontWeight = FontWeight.Bold) }
+            icon = {
+                Icon(
+                    imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
+                    contentDescription = "Detener"
+                )
+            },
+            text = {
+                Text(
+                    text = if (modoNavegacionActiva) "Detener ruta" else "Limpiar mapa",
+                    fontWeight = FontWeight.Bold
+                )
+            }
         )
     }
 
     // -----------------------------------------------------------------
-    // TARJETA INFERIOR ESTILO GOOGLE MAPS
+    // TARJETA INFERIOR CON INFORMACIÓN
     // -----------------------------------------------------------------
     AnimatedVisibility(
         visible = poiParaConfirmar != null,
