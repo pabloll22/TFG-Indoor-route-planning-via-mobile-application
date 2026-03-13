@@ -217,16 +217,11 @@ class MainActivity : ComponentActivity() {
                                             poiParaConfirmar = poiSeleccionado
                                         },
                                         onRutaConfirmada = { origenId, destinoPoi ->
-                                            val idInicio = origenId ?: currentUserNode?.id
-                                            val idFin = destinoPoi.nodoId
+                                            //Guardamos el origen pero NO arrancamos la ruta
+                                            origenSeleccionadoId = origenId
 
-                                            if (idInicio != null) {
-                                                val nuevaRuta = graphEngine?.findPath(idInicio, idFin)
-                                                rutaCalculada = nuevaRuta ?: emptyList()
-
-                                                modoNavegacionActiva = (origenId == null)
-                                            }
-                                            poiParaConfirmar = null
+                                            // Forzamos a que aparezca la tarjeta inferior en lugar de arrancar
+                                            poiParaConfirmar = destinoPoi
                                             //focusManager.clearFocus()
                                         }
                                     )
@@ -244,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                         destinoSeleccionadoId = null
                                         poiParaConfirmar = null // También cerramos la tarjeta por si acaso
                                         modoNavegacionActiva = false
+                                        origenSeleccionadoId = null
                                     },
 
                                     // Le decimos qué hacer cuando pulse "Detener Ruta"
@@ -251,6 +247,7 @@ class MainActivity : ComponentActivity() {
                                         rutaCalculada = emptyList()
                                         destinoSeleccionadoId = null
                                         modoNavegacionActiva = false
+                                        origenSeleccionadoId = null
                                     },
 
                                     // Le decimos qué hacer cuando pulse la "X" de la tarjeta
@@ -261,12 +258,19 @@ class MainActivity : ComponentActivity() {
                                     // Le decimos qué hacer cuando pulse "Cómo llegar"
                                     onComoLlegarClick = { poi ->
                                         destinoSeleccionadoId = poi.nodoId
-                                        if (currentUserNode != null) {
-                                            val nuevaRuta = graphEngine?.findPath(currentUserNode!!.id, destinoSeleccionadoId!!)
+
+                                        // Usa el origen que elegido, o "Mi ubicación" por defecto si es null
+                                        val idInicio = origenSeleccionadoId ?: currentUserNode?.id
+
+                                        if (idInicio != null) {
+                                            val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
-                                            modoNavegacionActiva = true
+
+                                            // Calculamos el color del botón inferior
+                                            modoNavegacionActiva = (origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id)
                                         }
-                                        poiParaConfirmar = null // Ocultamos la tarjeta al arrancar
+
+                                        poiParaConfirmar = null // Ocultamos la tarjeta al empezar a caminar
                                     }
                                 )
                             }
