@@ -213,6 +213,7 @@ class MainActivity : ComponentActivity() {
                                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                                     BuscadorDestino(
                                         pois = mapaDescargado?.pois ?: emptyList(),
+                                        rutaActiva = rutaCalculada.isNotEmpty(),
                                         onSoloVerDestino = { poiSeleccionado ->
                                             poiParaConfirmar = poiSeleccionado
                                         },
@@ -230,6 +231,7 @@ class MainActivity : ComponentActivity() {
                                 ControlesNavegacion(
                                     hayRutaActiva = rutaCalculada.isNotEmpty(),
                                     modoNavegacionActiva = modoNavegacionActiva,
+                                    esVistaPrevia = origenSeleccionadoId != null && origenSeleccionadoId != currentUserNode?.id,
                                     poiParaConfirmar = poiParaConfirmar,
 
                                     // Le decimos qué hacer cuando pulse "Volver"

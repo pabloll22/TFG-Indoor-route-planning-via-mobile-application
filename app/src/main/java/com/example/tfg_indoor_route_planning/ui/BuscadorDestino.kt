@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun BuscadorDestino(
     pois: List<POI>,
+    rutaActiva: Boolean,
     onRutaConfirmada: (origenId: String?, destino: POI) -> Unit,
     onSoloVerDestino: (POI) -> Unit
 ) {
@@ -56,6 +57,19 @@ fun BuscadorDestino(
     val focusManager = LocalFocusManager.current
     val focusRequesterOrigen = remember { FocusRequester() }
     val context = LocalContext.current
+
+    // Si arranca la ruta, cerramos la lista desplegable al instante
+    LaunchedEffect(rutaActiva) {
+        if (rutaActiva) {
+            buscadorActivo = false
+            focusManager.clearFocus()
+
+            //Si arrancó la ruta y el origen estaba en blanco, escribe "Mi ubicación"
+            if (textoOrigen.isEmpty()) {
+                textoOrigen = "Mi ubicación"
+            }
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(16.dp).zIndex(1f)
@@ -211,7 +225,9 @@ fun BuscadorDestino(
                                 textoDestino = poi.nombre
                                 destinoSeleccionado = poi
                                 modoRuta = true
-                                editandoOrigen = true
+                                editandoOrigen = false
+                                buscadorActivo = false
+                                focusManager.clearFocus()
                                 textoOrigen = ""
                                 onSoloVerDestino(poi)
                             } else {

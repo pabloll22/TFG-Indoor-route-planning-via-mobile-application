@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import com.example.tfg_indoor_route_planning.models.POI
 fun BoxScope.ControlesNavegacion(
     hayRutaActiva: Boolean,
     modoNavegacionActiva: Boolean,
+    esVistaPrevia: Boolean,
     poiParaConfirmar: POI?,
     onVolverClick: () -> Unit,
     onDetenerRutaClick: () -> Unit,
@@ -125,9 +127,18 @@ fun BoxScope.ControlesNavegacion(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Directions, contentDescription = "Cómo llegar", tint = Color.White)
+                        //Cambiamos icono y texto dependiendo de si es vista previa o ruta real
+                        Icon(
+                            imageVector = if (esVistaPrevia) Icons.Default.Visibility else Icons.Default.Directions,
+                            contentDescription = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
+                            tint = Color.White
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Cómo llegar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                      )
                     }
                 }
             }
