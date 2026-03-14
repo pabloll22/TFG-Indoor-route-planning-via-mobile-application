@@ -43,7 +43,7 @@ fun BuscadorDestino(
     pois: List<POI>,
     rutaActiva: Boolean,
     onRutaConfirmada: (origenId: String?, destino: POI) -> Unit,
-    onSoloVerDestino: (POI) -> Unit
+    onVistaPreviaActualizada: (origenId: String?, destino: POI) -> Unit
 ) {
     // Restauramos la variable interna que controlaba la doble barra perfectamente
     var modoRuta by remember { mutableStateOf(false) }
@@ -174,6 +174,16 @@ fun BuscadorDestino(
                         val temp = textoOrigen
                         textoOrigen = textoDestino
                         textoDestino = temp
+
+                        // Buscamos los POIs reales correspondientes a los textos intercambiados
+                        val nuevoDestinoPoi = pois.find { it.nombre.equals(textoDestino, ignoreCase = true) }
+                        val nuevoOrigenPoi = pois.find { it.nombre.equals(textoOrigen, ignoreCase = true) }
+
+                        // Si el nuevo destino es válido, notificamos al mapa y a la tarjeta
+                        if (nuevoDestinoPoi != null) {
+                            destinoSeleccionado = nuevoDestinoPoi
+                            onVistaPreviaActualizada(nuevoOrigenPoi?.nodoId, nuevoDestinoPoi)
+                        }
                     }) {
                         Icon(Icons.Default.SwapVert, contentDescription = "Intercambiar", tint = Color.Gray)
                     }
@@ -229,7 +239,7 @@ fun BuscadorDestino(
                                 buscadorActivo = false
                                 focusManager.clearFocus()
                                 textoOrigen = ""
-                                onSoloVerDestino(poi)
+                                onVistaPreviaActualizada(null, poi)
                             } else {
                                 if (editandoOrigen) {
                                     textoOrigen = poi.nombre
@@ -239,6 +249,9 @@ fun BuscadorDestino(
                                     textoDestino = poi.nombre
                                     destinoSeleccionado = poi
                                     editandoOrigen = true
+                                    //Actualizamos el destino si lo cambias a mano
+                                    val origenActualPoi = pois.find { it.nombre.equals(textoOrigen, ignoreCase = true) }
+                                    onVistaPreviaActualizada(origenActualPoi?.nodoId, poi)
                                 }
                                 buscadorActivo = false
                             }

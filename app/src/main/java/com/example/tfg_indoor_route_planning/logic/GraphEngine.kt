@@ -4,6 +4,7 @@ import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import java.util.PriorityQueue
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 class GraphEngine(private val nodesList: List<Node>) {
@@ -161,5 +162,34 @@ class GraphEngine(private val nodesList: List<Node>) {
 
     private fun calculateDistance(p1: PointMeters, p2: PointMeters): Float {
         return sqrt((p1.x - p2.x).pow(2) + (p1.y - p2.y).pow(2))
+    }
+
+    // Función que recibe la ruta de nodos y devuelve los metros redondeados
+    fun calcularDistanciaMetros(ruta: List<Node>): Int {
+        if (ruta.size < 2) return 0
+
+        var distanciaTotalPixeles = 0f
+
+        // Sumamos la distancia de cada segmento de la ruta
+        for (i in 0 until ruta.size - 1) {
+            val nodoActual = ruta[i]
+            val nodoSiguiente = ruta[i + 1]
+
+            val dx = nodoSiguiente.position.x - nodoActual.position.x
+            val dy = nodoSiguiente.position.y - nodoActual.position.y
+
+            // Pitágoras puro y duro
+            val distanciaSegmento = sqrt((dx * dx) + (dy * dy))
+            distanciaTotalPixeles += distanciaSegmento
+        }
+
+        // FACTOR DE CONVERSIÓN
+        // Ejemplo: Si 100 píxeles/unidades de tu nodo equivalen a 1 metro real, tu factor es 0.01f
+        val factorDeConversion = 0.6f
+
+        val distanciaEnMetros = distanciaTotalPixeles * factorDeConversion
+
+        // Redondeamos para que no diga "14.532 metros", sino "15 metros"
+        return distanciaEnMetros.roundToInt()
     }
 }

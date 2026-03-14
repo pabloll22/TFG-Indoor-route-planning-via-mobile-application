@@ -28,6 +28,8 @@ fun BoxScope.ControlesNavegacion(
     modoNavegacionActiva: Boolean,
     esVistaPrevia: Boolean,
     poiParaConfirmar: POI?,
+    poiDestinoActivo: POI?,
+    distanciaMetros: Int?,
     onVolverClick: () -> Unit,
     onDetenerRutaClick: () -> Unit,
     onCerrarTarjetaClick: () -> Unit,
@@ -51,36 +53,65 @@ fun BoxScope.ControlesNavegacion(
     }
 
     // -----------------------------------------------------------------
-    // BOTÓN DE CANCELAR RUTA
+    // NAVEGACIÓN ACTIVA
     // -----------------------------------------------------------------
     AnimatedVisibility(
-        visible = hayRutaActiva,
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 32.dp),
+        visible = hayRutaActiva && poiDestinoActivo != null,
+        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
     ) {
-        ExtendedFloatingActionButton(
-            onClick = onDetenerRutaClick,
-            // Si es navegación real (desde tu ubicación) es Rojo. Si es vista previa (desde otro sitio) es Gris.
-            containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray,
-            contentColor = Color.White,
-            icon = {
-                Icon(
-                    imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
-                    contentDescription = "Detener"
-                )
-            },
-            text = {
-                Text(
-                    text = if (modoNavegacionActiva) "Detener ruta" else "Limpiar mapa",
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        )
-    }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = poiDestinoActivo?.nombre ?: "Destino",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "📍 A $distanciaMetros metros",
+                        color = Color(0xFF1E88E5),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
 
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Button(
+                    onClick = onDetenerRutaClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Icon(
+                        imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
+                        contentDescription = "Detener",
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (modoNavegacionActiva) "Detener" else "Limpiar",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
     // -----------------------------------------------------------------
     // TARJETA INFERIOR CON INFORMACIÓN
     // -----------------------------------------------------------------

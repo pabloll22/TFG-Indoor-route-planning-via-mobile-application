@@ -214,8 +214,9 @@ class MainActivity : ComponentActivity() {
                                     BuscadorDestino(
                                         pois = mapaDescargado?.pois ?: emptyList(),
                                         rutaActiva = rutaCalculada.isNotEmpty(),
-                                        onSoloVerDestino = { poiSeleccionado ->
-                                            poiParaConfirmar = poiSeleccionado
+                                        onVistaPreviaActualizada = { origenId, destinoPoi ->
+                                            origenSeleccionadoId = origenId // Guardamos el nuevo origen (si lo hay)
+                                            poiParaConfirmar = destinoPoi   // Actualizamos la tarjeta y el pin rojo
                                         },
                                         onRutaConfirmada = { origenId, destinoPoi ->
                                             //Guardamos el origen pero NO arrancamos la ruta
@@ -233,6 +234,8 @@ class MainActivity : ComponentActivity() {
                                     modoNavegacionActiva = modoNavegacionActiva,
                                     esVistaPrevia = origenSeleccionadoId != null && origenSeleccionadoId != currentUserNode?.id,
                                     poiParaConfirmar = poiParaConfirmar,
+                                    poiDestinoActivo = mapaDescargado?.pois?.find { it.nodoId == destinoSeleccionadoId },
+                                    distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
 
                                     // Le decimos qué hacer cuando pulse "Volver"
                                     onVolverClick = {
@@ -421,18 +424,28 @@ class MainActivity : ComponentActivity() {
                     val xDp = with(density) { xPos.toDp() }
                     val yDp = with(density) { yPos.toDp() }
 
+                    val esDestino = (poi.nodoId == destinoSeleccionadoId || poi.nodoId == poiParaConfirmar?.nodoId)
+
+                    // Definimos el tamaño y color dinámicamente
+                    val tamanoCaja = if (esDestino) 36.dp else 24.dp
+                    val ajusteOffset = if (esDestino) 18.dp else 12.dp // La mitad del tamaño para centrarlo
+                    val colorFondo = if (esDestino) Color(0xFFD32F2F) else Color(0xFFFF9800) // Rojo si es destino, naranja si no
+                    val grosorBorde = if (esDestino) 3.dp else 2.dp
+
                     // Dibujamos un marcador naranja más grande para que el usuario lo toque
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .offset(x = xDp - 12.dp, y = yDp - 12.dp) // -12 porque mide 24
-                            .size(24.dp)
-                            .background(Color(0xFFFF9800), shape = RoundedCornerShape(8.dp)) // Naranja y cuadradito
-                            .border(2.dp, Color.White, RoundedCornerShape(8.dp))
-                            .clickable { onPoiClick(poi) } // ¡EL CLICK AHORA ESTÁ AQUÍ!
+                            .offset(x = xDp - ajusteOffset, y = yDp - ajusteOffset)
+                            .size(tamanoCaja)
+                            .background(colorFondo, shape = RoundedCornerShape(8.dp))
+                            .border(grosorBorde, Color.White, RoundedCornerShape(8.dp))
+                            // 👇 Si quieres darle un efecto de sombra extra cuando está seleccionado:
+                            // .then(if (esDestino) Modifier.shadow(8.dp, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable { onPoiClick(poi) }
                     ) {
-                        // Un pequeño icono o inicial adentro
-                        Text("📍", fontSize = 12.sp)
+                        // Un pequeño icono que también crece si es el destino
+                        Text("📍", fontSize = if (esDestino) 18.sp else 12.sp)
                     }
                 }
             }
