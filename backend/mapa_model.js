@@ -1,28 +1,33 @@
 const mongoose = require('mongoose');
 
+// 1. POI
 const poiSchema = new mongoose.Schema({
     id: { type: String, required: true },
     nombre: { type: String, required: true },
-    nodoId: { type: String, required: true } // El nodo al que nos llevará el A*
+    nodoId: { type: String, required: true },
+    plantaId: { type: String, required: true }
 }, { _id: false });
 
-// Definimos la estructura de un Nodo
+// 2. NODO
 const nodoSchema = new mongoose.Schema({
     id: { type: String, required: true },
     name: { type: String, required: true },
+    plantaId: { type: String, required: true },
     position: {
         x: { type: Number, required: true },
         y: { type: Number, required: true }
     },
-    neighbors: [{ type: String }] // Array de IDs de otros nodos
-}, { _id: false }); // _id: false evita que Mongo cree un ID interno por cada nodo
+    neighbors: [{ type: String }]
+}, { _id: false });
 
-// Definimos la estructura principal del Mapa
-const mapaSchema = new mongoose.Schema({
-    mapaId: { type: String, required: true, unique: true },
+// ESQUEMA DE PLANTA (El nuevo contenedor)
+const plantaSchema = new mongoose.Schema({
+    plantaId: { type: String, required: true },
     nombre: { type: String, required: true },
-    // knownBeacons será un diccionario (Map) donde la clave es la MAC (String)
-    // y el valor es un objeto con { x, y }
+    nivel: { type: Number, required: true },
+    imagenMapa: { type: String, required: true },
+
+    // Movemos los diccionarios y arrays AQUÍ DENTRO
     knownBeacons: {
         type: Map,
         of: new mongoose.Schema({
@@ -32,6 +37,15 @@ const mapaSchema = new mongoose.Schema({
     },
     nodos: [nodoSchema],
     pois: [poiSchema]
+}, { _id: false });
+
+// 4. MAPA (Representa al EDIFICIO COMPLETO)
+const mapaSchema = new mongoose.Schema({
+    mapaId: { type: String, required: true, unique: true },
+    nombre: { type: String, required: true },
+
+    // El edificio ahora es simplemente una lista de plantas
+    plantas: [plantaSchema]
 });
 
 // Exportamos el modelo para poder usarlo en otras partes de la app
