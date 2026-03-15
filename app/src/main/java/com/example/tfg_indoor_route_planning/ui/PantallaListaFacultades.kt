@@ -49,7 +49,7 @@ import com.example.tfg_indoor_route_planning.api.MapApiService
                 shadowElevation = 4.dp
             ) {
                 Text(
-                    text = "Selecciona Facultad",
+                    text = "Selecciona Facultad branch",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
