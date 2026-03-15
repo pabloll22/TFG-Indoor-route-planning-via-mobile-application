@@ -185,7 +185,7 @@ class GraphEngine(private val nodesList: List<Node>) {
 
         // FACTOR DE CONVERSIÓN
         // Ejemplo: Si 100 píxeles/unidades de tu nodo equivalen a 1 metro real, tu factor es 0.01f
-        val factorDeConversion = 0.6f
+        val factorDeConversion = 1f
 
         val distanciaEnMetros = distanciaTotalPixeles * factorDeConversion
 
