@@ -64,6 +64,7 @@ import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.ControlesNavegacion
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
+import com.example.tfg_indoor_route_planning.ui.SelectorDePlantas
 import kotlinx.coroutines.launch
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var modoNavegacionActiva by remember { mutableStateOf(false) }
             var origenSeleccionadoId by remember { mutableStateOf<String?>(null) }
+            var plantaActivaId by remember { mutableStateOf<String?>(null) }
             MaterialTheme {
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -209,10 +211,24 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                if (mapaDescargado != null && mapaDescargado!!.plantas.size > 1) {
+                                    SelectorDePlantas(
+                                        plantas = mapaDescargado!!.plantas,
+                                        plantaActivaId = plantaActivaId,
+                                        onPlantaSeleccionada = { idPlantaPulsada ->
+                                            // 1. Iluminamos el botón nuevo
+                                            plantaActivaId = idPlantaPulsada
+
+                                            // 2. Llamamos a nuestra nueva función para cambiar los datos y la imagen
+                                            cambiarDePlanta(idPlantaPulsada)
+                                        }
+                                    )
+                                }
+
                                 //Buscador de POI
                                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                                     BuscadorDestino(
-                                        pois = mapaDescargado?.pois ?: emptyList(),
+                                        pois = mapaDescargado?.plantas?.flatMap { it.pois } ?: emptyList(),
                                         rutaActiva = rutaCalculada.isNotEmpty(),
                                         onVistaPreviaActualizada = { origenId, destinoPoi ->
                                             origenSeleccionadoId = origenId // Guardamos el nuevo origen (si lo hay)
@@ -234,7 +250,7 @@ class MainActivity : ComponentActivity() {
                                     modoNavegacionActiva = modoNavegacionActiva,
                                     esVistaPrevia = origenSeleccionadoId != null && origenSeleccionadoId != currentUserNode?.id,
                                     poiParaConfirmar = poiParaConfirmar,
-                                    poiDestinoActivo = mapaDescargado?.pois?.find { it.nodoId == destinoSeleccionadoId },
+                                    poiDestinoActivo = pois?.find { it.nodoId == destinoSeleccionadoId },
                                     distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
 
                                     // Le decimos qué hacer cuando pulse "Volver"
@@ -440,7 +456,6 @@ class MainActivity : ComponentActivity() {
                             .size(tamanoCaja)
                             .background(colorFondo, shape = RoundedCornerShape(8.dp))
                             .border(grosorBorde, Color.White, RoundedCornerShape(8.dp))
-                            // 👇 Si quieres darle un efecto de sombra extra cuando está seleccionado:
                             // .then(if (esDestino) Modifier.shadow(8.dp, RoundedCornerShape(8.dp)) else Modifier)
                             .clickable { onPoiClick(poi) }
                     ) {
@@ -497,15 +512,22 @@ class MainActivity : ComponentActivity() {
             try {
                 mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
 
-                // Asignamos las variables a la interfaz
-                mapaDescargado?.let { mapa ->
-                    knownBeacons = mapa.knownBeacons
-                    nodes = mapa.nodos
-                    pois = mapa.pois
-                }
+                // Obtenemos la primera planta (Planta BajA) como planta activa por defecto
+                val plantaActivaPredeterminada = mapaDescargado?.plantas?.getOrNull(0)
+                Log.d("API_TFG", "Planta seleccionada: ${plantaActivaPredeterminada?.nombre}")
 
-                // Convertimos la imagen
-                planoFondo = base64ToImageBitmap(mapaDescargado!!.imagenBase64)
+                plantaActivaPredeterminada?.let { planta ->
+                    // Accedemos a los datos DENTRO de la planta
+                    knownBeacons = planta.knownBeacons
+
+                    // NOTA: Para el dibujo del Canvas, solo dibujamos los nodos/pois de ESTA planta.
+                    // Pero para el buscador/ruta usamos las listas "todosLosPois" / "todosLosNodos" del Paso 1.
+                    nodes = planta.nodos
+                    pois = planta.pois
+
+                    // Convertimos la imagen de ESTA planta
+                    planoFondo = base64ToImageBitmap(planta.imagenBase64)
+                }
 
                 // Inicializamos los motores
                  engine = PositioningEngine(knownBeacons)
@@ -518,6 +540,35 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e("API_TFG", "Error al descargar los datos. Revisa la IP en BASE_URL.", e)
             }
+        }
+    }
+
+    private fun cambiarDePlanta(nuevaPlantaId: String) {
+        // Buscamos los datos de la planta que el usuario ha tocado
+        val plantaSeleccionada = mapaDescargado?.plantas?.find { it.plantaId == nuevaPlantaId }
+
+        plantaSeleccionada?.let { planta ->
+            // Actualizamos las variables que dibujan el Canvas
+            knownBeacons = planta.knownBeacons
+            nodes = planta.nodos
+            pois = planta.pois
+
+            // Cambiamos la imagen de fondo
+            planoFondo = base64ToImageBitmap(planta.imagenBase64)
+
+            // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
+            devices.clear()                  // Borramos los beacons de la planta anterior
+            currentSmoothedPosition = null   // Reiniciamos el filtro EMA
+            lastDrawnPosition = null         // Reiniciamos el umbral de movimiento
+            userPosition = null              // Quitamos el punto azul del Canvas
+            currentUserNode = null           // Olvidamos en qué nodo estábamos
+            rutaCalculada = emptyList()
+
+            // IMPORTANTE: El motor de posicionamiento SÍ se reinicia con los beacons de esta planta
+            engine = PositioningEngine(knownBeacons)
+            graphEngine = GraphEngine(nodes)
+
+            Log.d("API_TFG", "Cambiado a planta: ${planta.nombre}")
         }
     }
 
