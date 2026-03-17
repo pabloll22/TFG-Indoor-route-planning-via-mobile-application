@@ -6,7 +6,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -14,6 +16,10 @@ import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tfg_indoor_route_planning.models.POI
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoxScope.ControlesNavegacion(
     hayRutaActiva: Boolean,
@@ -115,63 +122,102 @@ fun BoxScope.ControlesNavegacion(
     // -----------------------------------------------------------------
     // TARJETA INFERIOR CON INFORMACIÓN
     // -----------------------------------------------------------------
-    AnimatedVisibility(
-        visible = poiParaConfirmar != null,
-        modifier = Modifier.align(Alignment.BottomCenter),
-        enter = slideInVertically(initialOffsetY = { it }),
-        exit = slideOutVertically(targetOffsetY = { it })
-    ) {
-        poiParaConfirmar?.let { poi ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
+    if (poiParaConfirmar != null) {
+        // Esto controla la física de deslizar.
+        // Al poner skipPartiallyExpanded = false, la tarjeta se queda a la mitad
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+        ModalBottomSheet(
+            onDismissRequest = onCerrarTarjetaClick,
+            sheetState = sheetState,
+            containerColor = Color.White,
+            // Añade la típica rayita gris arriba para indicar que se puede arrastrar
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            val poi = poiParaConfirmar!!
+
+            // Envolvemos todo en un Column scrolleable para cuando se deslice hacia arriba
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    // Damos espacio extra abajo para que no se pegue al borde del móvil al scrollear
+                    .padding(bottom = 40.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = poi.nombre,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
-                            Text(text = "Punto de interés", color = Color.Gray, fontSize = 14.sp)
-                        }
-                        IconButton(onClick = onCerrarTarjetaClick) {
-                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(
-                        onClick = { onComoLlegarClick(poi) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        //Cambiamos icono y texto dependiendo de si es vista previa o ruta real
-                        Icon(
-                            imageVector = if (esVistaPrevia) Icons.Default.Visibility else Icons.Default.Directions,
-                            contentDescription = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
-                            tint = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                // 1. CABECERA (Título y botón cerrar)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                      )
+                            text = poi.nombre,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Text(text = "Punto de interés", color = Color.Gray, fontSize = 14.sp)
+                    }
+                    IconButton(onClick = onCerrarTarjetaClick) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 2. BOTÓN PRINCIPAL (Cómo Llegar / Vista previa)
+                Button(
+                    onClick = { onComoLlegarClick(poi) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = if (esVistaPrevia) Icons.Default.Visibility else Icons.Default.Directions,
+                        contentDescription = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Divider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 3. LA INFORMACIÓN EXTRA OCULTA (Se ve al deslizar hacia arriba)
+                Text(
+                    text = "Información",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.DarkGray
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Texto de relleno hasta que añadir descripciones a BD de Mongo
+                Text(
+                    text = "Desliza para leer más información sobre ${poi.nombre}. En el futuro, aquí podrás añadir la descripción detallada del lugar, sus horarios de apertura, el aforo actual en tiempo real o incluso un listado de servicios que ofrece este punto en concreto.",
+                    fontSize = 15.sp,
+                    color = Color.Gray,
+                    lineHeight = 22.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Datos técnicos
+                Text("📍 Planta: ${poi.plantaId}", color = Color.Gray, fontSize = 14.sp)
+                Text("🔢 Nodo asociado: ${poi.nodoId}", color = Color.Gray, fontSize = 14.sp)
+
+                // Espaciador final para asegurar que se pueda hacer scroll cómodamente
+                Spacer(modifier = Modifier.height(60.dp))
             }
         }
     }
