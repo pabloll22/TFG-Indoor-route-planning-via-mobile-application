@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -29,14 +30,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -118,6 +124,7 @@ class MainActivity : ComponentActivity() {
         if (permissions.all { it.value }) startScan()
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
@@ -126,6 +133,10 @@ class MainActivity : ComponentActivity() {
             var modoNavegacionActiva by remember { mutableStateOf(false) }
             var origenSeleccionadoId by remember { mutableStateOf<String?>(null) }
             var plantaActivaId by remember { mutableStateOf<String?>(null) }
+
+            var activarBuscadorExterno by remember { mutableStateOf(false) }
+            var textoDestinoExterno by remember { mutableStateOf("") }
+
             MaterialTheme {
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -156,6 +167,7 @@ class MainActivity : ComponentActivity() {
                             PantallaListaFacultades(
                                 lista = listaMapas,
                                 onFacultadClick = { idSeleccionado ->
+                                    isLoading = true
                                     mapaAbiertoId = idSeleccionado
                                     cargarDatosDesdeServidor(idSeleccionado) // Inicia descarga pesada
                                 }
@@ -172,6 +184,7 @@ class MainActivity : ComponentActivity() {
                                 CircularProgressIndicator()
                             }
                         } else {
+
                             // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
                             Box(modifier = Modifier.fillMaxSize()) {
                                 // -----------------------------------------------------
@@ -212,6 +225,13 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 if (mapaDescargado != null && mapaDescargado!!.plantas.size > 1) {
+                                    if (plantaActivaId == null) {
+                                        val primeraPlanta = mapaDescargado!!.plantas.first() // O la que consideres "Planta Baja"
+
+                                        // 1. Iluminamos el botón
+                                        plantaActivaId = primeraPlanta.plantaId
+
+                                    }
                                     SelectorDePlantas(
                                         plantas = mapaDescargado!!.plantas,
                                         plantaActivaId = plantaActivaId,
@@ -230,6 +250,10 @@ class MainActivity : ComponentActivity() {
                                     BuscadorDestino(
                                         pois = mapaDescargado?.plantas?.flatMap { it.pois } ?: emptyList(),
                                         rutaActiva = rutaCalculada.isNotEmpty(),
+
+                                        modoRuta2 = activarBuscadorExterno,
+                                        textoDestinoAUX = textoDestinoExterno,
+
                                         onVistaPreviaActualizada = { origenId, destinoPoi ->
                                             origenSeleccionadoId = origenId // Guardamos el nuevo origen (si lo hay)
                                             poiParaConfirmar = destinoPoi   // Actualizamos la tarjeta y el pin rojo
@@ -261,6 +285,7 @@ class MainActivity : ComponentActivity() {
                                         poiParaConfirmar = null // También cerramos la tarjeta por si acaso
                                         modoNavegacionActiva = false
                                         origenSeleccionadoId = null
+                                        plantaActivaId=null
                                     },
 
                                     // Le decimos qué hacer cuando pulse "Detener Ruta"
@@ -269,6 +294,8 @@ class MainActivity : ComponentActivity() {
                                         destinoSeleccionadoId = null
                                         modoNavegacionActiva = false
                                         origenSeleccionadoId = null
+                                        activarBuscadorExterno = false
+                                        textoDestinoExterno = ""
                                     },
 
                                     // Le decimos qué hacer cuando pulse la "X" de la tarjeta
@@ -279,6 +306,9 @@ class MainActivity : ComponentActivity() {
                                     // Le decimos qué hacer cuando pulse "Cómo llegar"
                                     onComoLlegarClick = { poi ->
                                         destinoSeleccionadoId = poi.nodoId
+
+                                        activarBuscadorExterno = true
+                                        textoDestinoExterno = poi.nombre
 
                                         // Usa el origen que elegido, o "Mi ubicación" por defecto si es null
                                         val idInicio = origenSeleccionadoId ?: currentUserNode?.id

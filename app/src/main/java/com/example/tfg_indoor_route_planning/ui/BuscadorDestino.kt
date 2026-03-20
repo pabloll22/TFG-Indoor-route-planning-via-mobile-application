@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 fun BuscadorDestino(
     pois: List<POI>,
     rutaActiva: Boolean,
+    modoRuta2: Boolean,
+    textoDestinoAUX: String,
     onRutaConfirmada: (origenId: String?, destino: POI) -> Unit,
     onVistaPreviaActualizada: (origenId: String?, destino: POI) -> Unit
 ) {
@@ -68,6 +70,19 @@ fun BuscadorDestino(
             if (textoOrigen.isEmpty()) {
                 textoOrigen = "Mi ubicación"
             }
+        }
+    }
+
+    LaunchedEffect(modoRuta2, textoDestinoAUX) {
+        if (modoRuta2 && textoDestinoAUX.isNotEmpty()) {
+            modoRuta = true // Expande la doble barra visualmente
+            textoOrigen = "Mi ubicación"
+            textoDestino = textoDestinoAUX
+        } else if (!modoRuta2) {
+            // Opcional: Si apagamos la señal desde fuera (al dar a Detener Ruta), limpiamos el buscador
+            modoRuta = false
+            textoOrigen = ""
+            textoDestino = ""
         }
     }
 

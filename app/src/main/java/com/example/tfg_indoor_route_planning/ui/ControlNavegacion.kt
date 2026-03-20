@@ -1,6 +1,7 @@
 package com.example.tfg_indoor_route_planning.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -13,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -123,26 +126,29 @@ fun BoxScope.ControlesNavegacion(
     // TARJETA INFERIOR CON INFORMACIÓN
     // -----------------------------------------------------------------
     if (poiParaConfirmar != null) {
-        // Esto controla la física de deslizar.
-        // Al poner skipPartiallyExpanded = false, la tarjeta se queda a la mitad
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        // IMPORTANTE: Ponemos skipPartiallyExpanded = true para que la tarjeta
+        // ocupe exactamente el tamaño de su contenido y no se quede atascada a la mitad.
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(
             onDismissRequest = onCerrarTarjetaClick,
             sheetState = sheetState,
             containerColor = Color.White,
-            // Añade la típica rayita gris arriba para indicar que se puede arrastrar
+            scrimColor = Color.Transparent,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             val poi = poiParaConfirmar!!
 
-            // Envolvemos todo en un Column scrolleable para cuando se deslice hacia arriba
+            // VARIABLE QUE CONTROLA EL DESPLEGABLE INTERNO
+            var mostrarInfoExtra by remember { mutableStateOf(false) }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    // Damos espacio extra abajo para que no se pegue al borde del móvil al scrollear
                     .padding(bottom = 40.dp)
+                    // Esto hace que cuando pulsemos "Ver más", la tarjeta crezca con una animación suave
+                    .animateContentSize()
                     .verticalScroll(rememberScrollState())
             ) {
                 // 1. CABECERA (Título y botón cerrar)
@@ -167,7 +173,7 @@ fun BoxScope.ControlesNavegacion(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 2. BOTÓN PRINCIPAL (Cómo Llegar / Vista previa)
+                // 2. BOTÓN PRINCIPAL (Cómo llegar / Vista previa)
                 Button(
                     onClick = { onComoLlegarClick(poi) },
                     modifier = Modifier
@@ -189,35 +195,55 @@ fun BoxScope.ControlesNavegacion(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-                Divider(color = Color(0xFFEEEEEE), thickness = 1.dp)
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 3. LA INFORMACIÓN EXTRA OCULTA (Se ve al deslizar hacia arriba)
-                Text(
-                    text = "Información",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.DarkGray
-                )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Texto de relleno hasta que añadir descripciones a BD de Mongo
-                Text(
-                    text = "Desliza para leer más información sobre ${poi.nombre}. En el futuro, aquí podrás añadir la descripción detallada del lugar, sus horarios de apertura, el aforo actual en tiempo real o incluso un listado de servicios que ofrece este punto en concreto.",
-                    fontSize = 15.sp,
-                    color = Color.Gray,
-                    lineHeight = 22.sp
-                )
+                // 3. BOTÓN DE "VER MÁS / VER MENOS"
+                TextButton(
+                    onClick = { mostrarInfoExtra = !mostrarInfoExtra },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(
+                        text = if (mostrarInfoExtra) "Ocultar información" else "Ver información del lugar",
+                        color = Color(0xFF1E88E5),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Icon(
+                        imageVector = if (mostrarInfoExtra) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = Color(0xFF1E88E5)
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                // 4. LA INFORMACIÓN EXTRA OCULTA (Solo aparece si pulsar el botón anterior)
+                AnimatedVisibility(visible = mostrarInfoExtra) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Divider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                // Datos técnicos
-                Text("📍 Planta: ${poi.plantaId}", color = Color.Gray, fontSize = 14.sp)
-                Text("🔢 Nodo asociado: ${poi.nodoId}", color = Color.Gray, fontSize = 14.sp)
+                        Text(
+                            text = "Información",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.DarkGray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                // Espaciador final para asegurar que se pueda hacer scroll cómodamente
-                Spacer(modifier = Modifier.height(60.dp))
+                        Text(
+                            text = "Aquí irá la descripción detallada sobre ${poi.nombre}. En el futuro, podrás añadir horarios de apertura, el aforo actual, o si hay profesores en este despacho.",
+                            fontSize = 15.sp,
+                            color = Color.Gray,
+                            lineHeight = 22.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text("📍 Planta: ${poi.plantaId}", color = Color.Gray, fontSize = 14.sp)
+                        Text("🔢 Nodo asociado: ${poi.nodoId}", color = Color.Gray, fontSize = 14.sp)
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
             }
         }
     }
