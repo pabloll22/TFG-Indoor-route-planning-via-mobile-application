@@ -45,6 +45,11 @@ fun BoxScope.ControlesNavegacion(
     onCerrarTarjetaClick: () -> Unit,
     onComoLlegarClick: (POI) -> Unit,
 ) {
+    val textoTiempo = if (distanciaMetros != null && distanciaMetros > 0) {
+        " 🚶 " + calcularTiempoEstimado(distanciaMetros)
+    } else {
+        ""
+    }
     // -----------------------------------------------------------------
     // BOTÓN DE VOLVER A LA LISTA
     // -----------------------------------------------------------------
@@ -91,7 +96,7 @@ fun BoxScope.ControlesNavegacion(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "📍 A $distanciaMetros metros",
+                        text = "📍 $distanciaMetros metros\n$textoTiempo",
                         color = Color(0xFF1E88E5),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
@@ -246,5 +251,30 @@ fun BoxScope.ControlesNavegacion(
                 }
             }
         }
+    }
+}
+
+fun calcularTiempoEstimado(distanciaMetros: Int?): String {
+    if (distanciaMetros != null) {
+        if (distanciaMetros <= 0) return "0 seg"
+    }
+
+    val velocidadMetrosPorSegundo = 1.4f
+    val tiempoTotalSegundos = (distanciaMetros?.div(velocidadMetrosPorSegundo))?.toInt()
+
+    val minutos = tiempoTotalSegundos?.div(60)
+    val segundosRestantes = tiempoTotalSegundos?.rem(60)
+
+    if (segundosRestantes != null) {
+        return when {
+            // Si es menos de un minuto, enseñamos solo los segundos
+            minutos == 0 -> "aprox. $segundosRestantes seg"
+            // Si los segundos son muy poquitos, redondeamos a minutos
+            segundosRestantes < 10 -> "aprox. $minutos min"
+            // Formato completo para distancias medias
+            else -> "aprox. $minutos min y $segundosRestantes seg"
+        }
+    }else{
+        return ""
     }
 }

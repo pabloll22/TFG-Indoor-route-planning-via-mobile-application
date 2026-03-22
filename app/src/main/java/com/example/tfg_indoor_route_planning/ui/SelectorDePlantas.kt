@@ -1,12 +1,20 @@
 package com.example.tfg_indoor_route_planning.ui
 
 
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,6 +28,7 @@ import com.example.tfg_indoor_route_planning.models.Planta
 fun BoxScope.SelectorDePlantas(
     plantas: List<Planta>,
     plantaActivaId: String?,
+    plantaParpadeandoId: String?,
     onPlantaSeleccionada: (String) -> Unit
 ) {
     // Ordenamos de mayor a menor nivel
@@ -42,6 +51,9 @@ fun BoxScope.SelectorDePlantas(
             plantasOrdenadas.forEach { planta ->
                 val estaSeleccionada = (planta.plantaId == plantaActivaId)
 
+                // Solo parpadea si es la planta destino Y NO estamos ya en ella
+                val debeParpadear = (planta.plantaId == plantaParpadeandoId) && !estaSeleccionada
+
                 // Texto de la planta
                 val textoPlanta = when {
                     planta.nivel > 0 -> "L${planta.nivel}"
@@ -49,12 +61,48 @@ fun BoxScope.SelectorDePlantas(
                     else -> "0"
                 }
 
+                val infiniteTransition = rememberInfiniteTransition(label = "animacion_latido_suave")
+
+                // Definimos los colores para el estado "latido"
+                val colorLatidoBase = Color(0xFFEEEEEE) // Gris muy clarito
+                val colorLatidoResaltado = Color(0xFFFFCC80) // Naranja pálido (menos saturado)
+
+                // Animamos el color de fondo con una curva orgánica (FastOutSlowInEasing) y ritmo lento
+                val colorFondoAnimado by infiniteTransition.animateColor(
+                    initialValue = if (estaSeleccionada) Color(0xFF1E88E5) else colorLatidoBase,
+                    targetValue = when {
+                        estaSeleccionada -> Color(0xFF1E88E5) // Azul fijo si está seleccionada
+                        debeParpadear -> colorLatidoResaltado // Oscila hacia el naranja pálido
+                        else -> colorLatidoBase // Si no, gris suave fijo
+                    },
+                    animationSpec = infiniteRepeatable(
+                        // 1000ms (1 segundo) por latido, curva orgánica y modo Reverse
+                        animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "colorFondo"
+                )
+
+                // Animamos el color del texto de forma sutil
+                val colorTextoAnimado by infiniteTransition.animateColor(
+                    initialValue = if (estaSeleccionada) Color.White else Color.DarkGray,
+                    targetValue = when {
+                        estaSeleccionada -> Color.White // Blanco fijo
+                        debeParpadear -> Color.Black // Negro si parpadea para que contraste
+                        else -> Color.DarkGray // Gris oscuro por defecto
+                    },
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "colorTexto"
+                )
+
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        // Si está seleccionada, fondo azul con bordes redondeados. Si no, transparente.
                         .background(
-                            color = if (estaSeleccionada) Color(0xFF1E88E5) else Color.Transparent,
+                            color = colorFondoAnimado, // Usamos la variable animada
                             shape = RoundedCornerShape(12.dp)
                         )
                         .clickable { onPlantaSeleccionada(planta.plantaId) },
@@ -64,8 +112,7 @@ fun BoxScope.SelectorDePlantas(
                         text = textoPlanta,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        // Texto blanco si está seleccionado, gris oscuro si no
-                        color = if (estaSeleccionada) Color.White else Color.DarkGray
+                        color = colorTextoAnimado // Usamos el texto animado
                     )
                 }
             }

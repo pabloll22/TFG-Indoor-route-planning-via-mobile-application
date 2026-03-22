@@ -44,6 +44,7 @@ fun BuscadorDestino(
     rutaActiva: Boolean,
     modoRuta2: Boolean,
     textoDestinoAUX: String,
+    textoOrigenAUX: String,
     onRutaConfirmada: (origenId: String?, destino: POI) -> Unit,
     onVistaPreviaActualizada: (origenId: String?, destino: POI) -> Unit
 ) {
@@ -76,7 +77,7 @@ fun BuscadorDestino(
     LaunchedEffect(modoRuta2, textoDestinoAUX) {
         if (modoRuta2 && textoDestinoAUX.isNotEmpty()) {
             modoRuta = true // Expande la doble barra visualmente
-            textoOrigen = "Mi ubicación"
+            textoOrigen = textoOrigenAUX
             textoDestino = textoDestinoAUX
         } else if (!modoRuta2) {
             // Opcional: Si apagamos la señal desde fuera (al dar a Detener Ruta), limpiamos el buscador

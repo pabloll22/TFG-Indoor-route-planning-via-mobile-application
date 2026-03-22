@@ -1,5 +1,7 @@
 package com.example.tfg_indoor_route_planning.logic
 
+import android.content.ContentValues.TAG
+import android.util.Log
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import java.util.PriorityQueue
@@ -25,13 +27,16 @@ class GraphEngine(private val nodesList: List<Node>) {
     /**
      * Calcula el nodo lógico más coherente basándose en la posición física.
      */
-    fun snapToGraph(rawPosition: PointMeters): Node? {
+    fun snapToGraph(rawPosition: PointMeters, plantaActualId: String, noHayRutaCalculada: Boolean): Node? {
         // CASO 1: Arranque en frío. No tenemos nodo previo.
-        // Buscamos el nodo más cercano de TODO el mapa.
-        if (currentUserNode == null) {
-            val nearest = nodesList.minByOrNull { node ->
-                calculateDistance(rawPosition, node.position)
-            }
+
+        val saltoPermitido = (currentUserNode?.plantaId != plantaActualId) && noHayRutaCalculada
+        Log.d(TAG, "SALTO PERMITIDO: $saltoPermitido")
+
+        if (currentUserNode == null || saltoPermitido) {
+            val nearest = nodesList
+                .filter { it.plantaId == plantaActualId }
+                .minByOrNull { node -> calculateDistance(rawPosition, node.position) }
             currentUserNode = nearest
             return nearest
         }
@@ -143,6 +148,9 @@ class GraphEngine(private val nodesList: List<Node>) {
 
     // Distancia Euclidiana (Línea recta) entre dos nodos
     private fun calculateDistance(nodeA: Node, nodeB: Node): Float {
+        if (nodeA.plantaId != nodeB.plantaId) {
+            return 5.0f // Coste fijo (ej: 5 metros) por subir/bajar escaleras
+        }
         val dx = nodeA.position.x - nodeB.position.x
         val dy = nodeA.position.y - nodeB.position.y
         return sqrt(dx.pow(2) + dy.pow(2))

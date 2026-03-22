@@ -16,12 +16,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -30,19 +24,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Directions
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,15 +37,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.lifecycleScope
 import com.example.tfg_indoor_route_planning.api.MapApiService
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
+import com.example.tfg_indoor_route_planning.logic.dividirRutaPorPlantas
 import com.example.tfg_indoor_route_planning.models.Mapa
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.POI
@@ -116,6 +98,8 @@ class MainActivity : ComponentActivity() {
     private var mapaAbiertoId by mutableStateOf<String?>(null)
     private var poiParaConfirmar by mutableStateOf<POI?>(null)
     private var pois by mutableStateOf<List<POI>>(emptyList())
+    private var plantaActivaId by mutableStateOf<String?>(null)
+    private var plantaQueDebeParpadearId by mutableStateOf<String?>(null)
 
     @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
@@ -132,10 +116,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             var modoNavegacionActiva by remember { mutableStateOf(false) }
             var origenSeleccionadoId by remember { mutableStateOf<String?>(null) }
-            var plantaActivaId by remember { mutableStateOf<String?>(null) }
+            //var plantaActivaId by remember { mutableStateOf<String?>(null) }
 
             var activarBuscadorExterno by remember { mutableStateOf(false) }
             var textoDestinoExterno by remember { mutableStateOf("") }
+            var textoOrigenExterno by remember { mutableStateOf("") }
 
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -184,6 +169,27 @@ class MainActivity : ComponentActivity() {
                                 CircularProgressIndicator()
                             }
                         } else {
+                            val rutaParaDibujar = if (rutaCalculada.isNotEmpty()) {
+                                val rutaCortada = dividirRutaPorPlantas(rutaCalculada) // Asegúrate de tener esta función creada
+
+                                if (rutaCortada.hayCambioDePlanta && plantaActivaId == rutaCalculada.firstOrNull()?.plantaId) {
+                                    // Si la ruta cambia de planta, y estamos en la planta de origen,
+                                    // hacemos que parpadee el botón de la planta de destino.
+                                    plantaQueDebeParpadearId = rutaCortada.tramoPlantaDestino.firstOrNull()?.plantaId
+                                } else {
+                                    plantaQueDebeParpadearId = null
+                                }
+
+                                if (plantaActivaId == rutaCalculada.first().plantaId) {
+                                    rutaCortada.tramoPlantaOrigen
+                                } else if (plantaActivaId == rutaCalculada.last().plantaId) {
+                                    rutaCortada.tramoPlantaDestino
+                                } else {
+                                    emptyList()
+                                }
+                            } else {
+                                emptyList()
+                            }
 
                             // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
                             Box(modifier = Modifier.fillMaxSize()) {
@@ -196,7 +202,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.weight(2f).fillMaxHeight(),
                                             nodes = nodes,
                                             planoFondo = planoFondo,
-                                            rutaCalculada = rutaCalculada,
+                                            rutaCalculada = rutaParaDibujar,
                                             userPosition = userPosition,
                                             currentUserNode = currentUserNode,
                                              //onNodeClick = { /* tu lógica de toque */ }
@@ -213,7 +219,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.weight(1f).fillMaxWidth(),
                                             nodes = nodes,
                                             planoFondo = planoFondo,
-                                            rutaCalculada = rutaCalculada,
+                                            rutaCalculada = rutaParaDibujar,
                                             userPosition = userPosition,
                                             currentUserNode = currentUserNode,
                                             onPoiClick = { poiTocado:POI ->
@@ -235,12 +241,17 @@ class MainActivity : ComponentActivity() {
                                     SelectorDePlantas(
                                         plantas = mapaDescargado!!.plantas,
                                         plantaActivaId = plantaActivaId,
+                                        plantaParpadeandoId = plantaQueDebeParpadearId,
                                         onPlantaSeleccionada = { idPlantaPulsada ->
                                             // 1. Iluminamos el botón nuevo
                                             plantaActivaId = idPlantaPulsada
 
                                             // 2. Llamamos a nuestra nueva función para cambiar los datos y la imagen
                                             cambiarDePlanta(idPlantaPulsada)
+
+                                            if (idPlantaPulsada == plantaQueDebeParpadearId) {
+                                                plantaQueDebeParpadearId = null
+                                            }
                                         }
                                     )
                                 }
@@ -253,6 +264,7 @@ class MainActivity : ComponentActivity() {
 
                                         modoRuta2 = activarBuscadorExterno,
                                         textoDestinoAUX = textoDestinoExterno,
+                                        textoOrigenAUX = textoOrigenExterno,
 
                                         onVistaPreviaActualizada = { origenId, destinoPoi ->
                                             origenSeleccionadoId = origenId // Guardamos el nuevo origen (si lo hay)
@@ -274,7 +286,7 @@ class MainActivity : ComponentActivity() {
                                     modoNavegacionActiva = modoNavegacionActiva,
                                     esVistaPrevia = origenSeleccionadoId != null && origenSeleccionadoId != currentUserNode?.id,
                                     poiParaConfirmar = poiParaConfirmar,
-                                    poiDestinoActivo = pois?.find { it.nodoId == destinoSeleccionadoId },
+                                    poiDestinoActivo = mapaDescargado?.plantas?.flatMap { it.pois }?.find { it.nodoId == destinoSeleccionadoId },
                                     distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
 
                                     // Le decimos qué hacer cuando pulse "Volver"
@@ -286,6 +298,9 @@ class MainActivity : ComponentActivity() {
                                         modoNavegacionActiva = false
                                         origenSeleccionadoId = null
                                         plantaActivaId=null
+                                        activarBuscadorExterno = false
+                                        textoDestinoExterno = ""
+                                        textoOrigenExterno=""
                                     },
 
                                     // Le decimos qué hacer cuando pulse "Detener Ruta"
@@ -296,6 +311,8 @@ class MainActivity : ComponentActivity() {
                                         origenSeleccionadoId = null
                                         activarBuscadorExterno = false
                                         textoDestinoExterno = ""
+                                        textoOrigenExterno=""
+                                        plantaQueDebeParpadearId=null
                                     },
 
                                     // Le decimos qué hacer cuando pulse la "X" de la tarjeta
@@ -310,12 +327,30 @@ class MainActivity : ComponentActivity() {
                                         activarBuscadorExterno = true
                                         textoDestinoExterno = poi.nombre
 
+                                        // Comprobamos si es una "Vista previa" o una ruta normal
+                                        if (origenSeleccionadoId == null) {
+                                            // Ruta normal: empezamos desde donde estamos
+                                            textoOrigenExterno = "Mi ubicación"
+                                        } else {
+                                            // Vista previa: buscamos el nombre del POI que elegimos como origen
+                                            val poiOrigen = mapaDescargado?.plantas
+                                                ?.flatMap { it.pois }
+                                                ?.find { it.nodoId == origenSeleccionadoId }
+
+                                            // Si lo encuentra pone su nombre, si no, un texto por defecto
+                                            textoOrigenExterno = poiOrigen?.nombre ?: "Origen seleccionado"
+                                        }
+
                                         // Usa el origen que elegido, o "Mi ubicación" por defecto si es null
                                         val idInicio = origenSeleccionadoId ?: currentUserNode?.id
 
                                         if (idInicio != null) {
                                             val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
+                                            Log.d("DEBUG_RUTA", "=========================================")
+                                            Log.d("DEBUG_RUTA", "Origen: $idInicio | Destino: $destinoSeleccionadoId")
+                                            Log.d("DEBUG_RUTA", "Nodos devueltos por A*: ${rutaCalculada.map { it.id }}")
+                                            Log.d("DEBUG_RUTA", "=========================================")
 
                                             // Calculamos el color del botón inferior
                                             modoNavegacionActiva = (origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id)
@@ -374,7 +409,7 @@ class MainActivity : ComponentActivity() {
                         val endNode = rutaCalculada[i + 1]
 
                         drawLine(
-                            color = Color(0xFF00BCD4), // Color Cyan brillante para la ruta
+                            color = Color.Blue, // Color Cyan brillante para la ruta
                             start = Offset((startNode.position.x * scaleX), (startNode.position.y * scaleY)),
                             end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
                             strokeWidth = 12f,
@@ -385,7 +420,7 @@ class MainActivity : ComponentActivity() {
             }
 
             // 1. Dibujamos los NODOS de navegación (Verde)
-            nodes.forEach { node ->
+            /*nodes.forEach { node ->
                 val xPos = node.position.x * scaleX
                 val yPos = node.position.y * scaleY
 
@@ -409,7 +444,7 @@ class MainActivity : ComponentActivity() {
                         softWrap = false // Evitamos que haga saltos de línea raros
                     )
                 }
-            }
+            }*/
 
             // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
             knownBeacons.values.forEach { beaconPos ->
@@ -558,10 +593,11 @@ class MainActivity : ComponentActivity() {
                     // Convertimos la imagen de ESTA planta
                     planoFondo = base64ToImageBitmap(planta.imagenBase64)
                 }
+                val todosLosNodosDelEdificio = mapaDescargado!!.plantas.flatMap { it.nodos }
 
                 // Inicializamos los motores
                  engine = PositioningEngine(knownBeacons)
-                 graphEngine = GraphEngine(nodes)
+                 graphEngine = GraphEngine(todosLosNodosDelEdificio)
 
                 // Todo listo, quitamos la pantalla de carga
                 isLoading = false
@@ -588,15 +624,17 @@ class MainActivity : ComponentActivity() {
 
             // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
             devices.clear()                  // Borramos los beacons de la planta anterior
-            currentSmoothedPosition = null   // Reiniciamos el filtro EMA
-            lastDrawnPosition = null         // Reiniciamos el umbral de movimiento
-            userPosition = null              // Quitamos el punto azul del Canvas
-            currentUserNode = null           // Olvidamos en qué nodo estábamos
-            rutaCalculada = emptyList()
+            //currentSmoothedPosition = null   // Reiniciamos el filtro EMA
+            //lastDrawnPosition = null         // Reiniciamos el umbral de movimiento
+
+            //userPosition = null              // Quitamos el punto azul del Canvas
+            //currentUserNode = null           // Olvidamos en qué nodo estábamos
+            //rutaCalculada = emptyList()
 
             // IMPORTANTE: El motor de posicionamiento SÍ se reinicia con los beacons de esta planta
             engine = PositioningEngine(knownBeacons)
-            graphEngine = GraphEngine(nodes)
+            plantaActivaId=planta.plantaId
+            //graphEngine = GraphEngine(nodes)
 
             Log.d("API_TFG", "Cambiado a planta: ${planta.nombre}")
         }
@@ -663,8 +701,7 @@ class MainActivity : ComponentActivity() {
                             userPosition = currentSmoothedPosition // Actualizamos el estado de Compose
                             // Le pedimos al motor del grafo que busque el nodo lógico
                             // usando la posición suavizada actual.
-                            val snappedNode = graphEngine?.snapToGraph(currentSmoothedPosition!!)
-
+                            val snappedNode = graphEngine?.snapToGraph(currentSmoothedPosition!!, plantaActivaId ?: "planta_0", rutaCalculada.isEmpty())
 
                             if (snappedNode != null && snappedNode.id != currentUserNode?.id) {
 
