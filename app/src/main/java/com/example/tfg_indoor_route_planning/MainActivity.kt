@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -84,7 +85,7 @@ class MainActivity : ComponentActivity() {
 
     // Factor de suavizado (0.1 = muy lento/suave, 0.9 = muy rápido/ruidoso)
     // 0.25f suele ser un buen equilibrio
-    private val ALPHA = 0.5f
+    private val ALPHA = 0.35f
     // Variable para pintar el nodo en la UI
     private var currentUserNode by mutableStateOf<Node?>(null)
     // --- CONFIGURACIÓN DEL MAPA ---
@@ -100,6 +101,13 @@ class MainActivity : ComponentActivity() {
     private var pois by mutableStateOf<List<POI>>(emptyList())
     private var plantaActivaId by mutableStateOf<String?>(null)
     private var plantaQueDebeParpadearId by mutableStateOf<String?>(null)
+    // Esto guarda el RSSI suavizado y la hora exacta en la que lo escuchamos por última vez
+    data class BeaconState(var smoothedRssi: Double, var lastSeenTimestamp: Long)
+
+    // Variables globales para tu lógica de escaneo
+    private val activeBeacons = mutableMapOf<String, BeaconState>()
+    private val RSSI_ALPHA = 0.15 // Factor de suavizado (ajusta entre 0.1 y 0.3)
+    private val STALE_TIMEOUT_MS = 3000L // Si pasan 3 segundos sin escuchar un beacon, lo borramos
 
     @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
@@ -420,7 +428,7 @@ class MainActivity : ComponentActivity() {
             }
 
             // 1. Dibujamos los NODOS de navegación (Verde)
-            /*nodes.forEach { node ->
+            nodes.forEach { node ->
                 val xPos = node.position.x * scaleX
                 val yPos = node.position.y * scaleY
 
@@ -444,7 +452,7 @@ class MainActivity : ComponentActivity() {
                         softWrap = false // Evitamos que haga saltos de línea raros
                     )
                 }
-            }*/
+            }
 
             // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
             knownBeacons.values.forEach { beaconPos ->
@@ -658,71 +666,127 @@ class MainActivity : ComponentActivity() {
 
             val macAddress = result.device.address
 
-            // FILTRO ESTRICTO: Solo si la MAC está en mis beacons conocidos
             if (knownBeacons.containsKey(macAddress)) {
-                val index = devices.indexOfFirst { it.device.address == macAddress }
-                if (index != -1) {
-                    devices[index] = result
-                } else {
-                    devices.add(result)
-                }
 
                 val currentTime = System.currentTimeMillis()
+                val rawRssi = result.rssi.toDouble()
 
-                // Solo recalculamos la posición si han pasado 500ms
-                if (currentTime - lastCalculationTime > 500) {
+                // =========================
+                // 1. FILTRO EMA (RSSI)
+                // =========================
+                val existingState = activeBeacons[macAddress]
 
-                    // 1. Obtenemos la posición "cruda" (con ruido)
-                    val rawPosition = engine?.calculateUserPosition(devices)
+                if (existingState == null) {
+                    activeBeacons[macAddress] = BeaconState(rawRssi, currentTime)
+                } else {
+                    val newSmoothed = (rawRssi * RSSI_ALPHA) +
+                            (existingState.smoothedRssi * (1 - RSSI_ALPHA))
 
-                    if (rawPosition != null) {
-                        // 2. ESTRATEGIA 1: Filtro de Paso Bajo (Suavizado EMA)
-                        if (currentSmoothedPosition == null) {
-                            // Si es la primera vez, confiamos en el dato crudo
-                            currentSmoothedPosition = rawPosition
+                    existingState.smoothedRssi = newSmoothed
+                    existingState.lastSeenTimestamp = currentTime
+                }
+
+                // =========================
+                // 2. RECÁLCULO CONTROLADO
+                // =========================
+                if (currentTime - lastCalculationTime > 1000) {
+
+                    // =========================
+                    // 3. LIMPIEZA BEACONS
+                    // =========================
+                    activeBeacons.entries.removeIf {
+                        currentTime - it.value.lastSeenTimestamp > STALE_TIMEOUT_MS
+                    }
+
+                    // =========================
+                    // 4. CALCULAR POSICIÓN (HÍBRIDO)
+                    // =========================
+                    val stablePosition = engine?.calculateUserPosition(activeBeacons)
+
+                    if (stablePosition != null) {
+
+                        // =========================
+                        // 5. SUAVIZADO POSICIÓN (EMA)
+                        // =========================
+                        val alpha = 0.5f
+
+                        currentSmoothedPosition = if (currentSmoothedPosition == null) {
+                            stablePosition
                         } else {
-                            // Fórmula: (Nuevo * alpha) + (Anterior * (1 - alpha))
-                            val newX = (rawPosition.x * ALPHA) + (currentSmoothedPosition!!.x * (1 - ALPHA))
-                            val newY = (rawPosition.y * ALPHA) + (currentSmoothedPosition!!.y * (1 - ALPHA))
-
-                            currentSmoothedPosition = PointMeters(newX, newY)
+                            PointMeters(
+                                currentSmoothedPosition!!.x + alpha * (stablePosition.x - currentSmoothedPosition!!.x),
+                                currentSmoothedPosition!!.y + alpha * (stablePosition.y - currentSmoothedPosition!!.y)
+                            )
                         }
 
-                        // 3. ESTRATEGIA 3: Umbral de Movimiento (Deadband)
-                        // Calculamos cuánto nos hemos movido respecto a lo último que se dibujó
+                        // =========================
+                        // 6. LIMITADOR DE VELOCIDAD
+                        // =========================
+                        if (lastDrawnPosition != null) {
+
+                            val dx = currentSmoothedPosition!!.x - lastDrawnPosition!!.x
+                            val dy = currentSmoothedPosition!!.y - lastDrawnPosition!!.y
+
+                            val dist = sqrt(dx * dx + dy * dy)
+                            val maxStep = 1.5f // metros máx por actualización
+
+                            if (dist > maxStep) {
+                                val scale = maxStep / dist
+                                currentSmoothedPosition = PointMeters(
+                                    lastDrawnPosition!!.x + dx * scale,
+                                    lastDrawnPosition!!.y + dy * scale
+                                )
+                            }
+                        }
+
+                        // =========================
+                        // 7. DEADBAND (evitar micro saltos)
+                        // =========================
                         val distanceMoved = if (lastDrawnPosition == null) {
-                            100f // Valor alto para forzar el primer pintado
+                            100f
                         } else {
-                            sqrt((currentSmoothedPosition!!.x - lastDrawnPosition!!.x).pow(2) + (currentSmoothedPosition!!.y - lastDrawnPosition!!.y).pow(2))
+                            sqrt(
+                                (currentSmoothedPosition!!.x - lastDrawnPosition!!.x).pow(2) +
+                                        (currentSmoothedPosition!!.y - lastDrawnPosition!!.y).pow(2)
+                            )
                         }
 
-                        // Solo actualizamos la UI si el cambio es significativo (evita el "baile" del punto)
                         if (distanceMoved >= MOVEMENT_THRESHOLD_METERS) {
-                            userPosition = currentSmoothedPosition // Actualizamos el estado de Compose
-                            // Le pedimos al motor del grafo que busque el nodo lógico
-                            // usando la posición suavizada actual.
-                            val snappedNode = graphEngine?.snapToGraph(currentSmoothedPosition!!, plantaActivaId ?: "planta_0", rutaCalculada.isEmpty())
+
+                            userPosition = currentSmoothedPosition
+                            lastDrawnPosition = currentSmoothedPosition
+
+                            // =========================
+                            // 8. SNAP AL GRAFO
+                            // =========================
+                            val snappedNode = graphEngine?.snapToGraph(
+                                currentSmoothedPosition!!,
+                                plantaActivaId ?: "planta_0",
+                                rutaCalculada.isEmpty()
+                            )
 
                             if (snappedNode != null && snappedNode.id != currentUserNode?.id) {
 
-                                // ¡Ha cambiado de nodo! Recalculamos la ruta hacia el destino
-                                // (Asegúrate de tener la variable destinoSeleccionadoId definida arriba en tu MainActivity)
-                                val nuevaRuta = graphEngine?.findPath(snappedNode.id, destinoSeleccionadoId)
+                                val nuevaRuta = graphEngine?.findPath(
+                                    snappedNode.id,
+                                    destinoSeleccionadoId
+                                )
 
                                 if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
                                     rutaCalculada = nuevaRuta
-                                    Log.d(TAG, "🔄 Ruta recalculada desde ${snappedNode.name}. Pasos: ${nuevaRuta.size}")
+                                    Log.d(TAG, "🔄 Ruta recalculada. Pasos: ${nuevaRuta.size}")
                                 } else {
-                                    rutaCalculada = emptyList() // Si llega a 0, ha llegado al final
-                                    Log.d(TAG, "✅ Has llegado al destino o no hay ruta posible.")
+                                    rutaCalculada = emptyList()
+                                    Log.d(TAG, "✅ Has llegado al destino o no hay ruta.")
                                 }
                             }
 
-                            // Actualizamos la variable de estado para que la UI se repinte
-                             currentUserNode = snappedNode
-                            // -----------------------------------------------------------
+                            currentUserNode = snappedNode
 
-                            Log.d(TAG, "Movimiento: ${"%.2f".format(distanceMoved)}m. Nodo actual: ${snappedNode?.name}")
+                            Log.d(TAG,
+                                "Movimiento: ${"%.2f".format(distanceMoved)}m | " +
+                                        "Pos: (${currentSmoothedPosition!!.x}, ${currentSmoothedPosition!!.y})"
+                            )
                         }
                     }
                     lastCalculationTime = currentTime

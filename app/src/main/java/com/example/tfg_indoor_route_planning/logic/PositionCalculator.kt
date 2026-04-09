@@ -8,7 +8,7 @@ object PositionCalculator {
     /**
      * Convierte RSSI a distancia estimada en metros.
      */
-    fun calculateDistance(rssi: Int, txPower: Int = -50, n: Double = 4.0): Double {
+    fun calculateDistance(rssi: Double, txPower: Int = -53, n: Double = 3.5): Double {
         return 10.0.pow((txPower - rssi) / (10 * n))
     }
 
