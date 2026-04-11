@@ -26,16 +26,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,7 +47,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.tfg_indoor_route_planning.api.MapApiService
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.logic.CompassEngine
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
+import com.example.tfg_indoor_route_planning.logic.NavigationHelper
 import com.example.tfg_indoor_route_planning.logic.PositioningEngine
 import com.example.tfg_indoor_route_planning.logic.dividirRutaPorPlantas
 import com.example.tfg_indoor_route_planning.models.Mapa
@@ -52,6 +58,7 @@ import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.ControlesNavegacion
+import com.example.tfg_indoor_route_planning.ui.NavigationBanner
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import com.example.tfg_indoor_route_planning.ui.SelectorDePlantas
 import kotlinx.coroutines.launch
@@ -129,6 +136,33 @@ class MainActivity : ComponentActivity() {
             var activarBuscadorExterno by remember { mutableStateOf(false) }
             var textoDestinoExterno by remember { mutableStateOf("") }
             var textoOrigenExterno by remember { mutableStateOf("") }
+
+            // ==========================================
+            // BRÚJULA
+            // ==========================================
+            val context = LocalContext.current
+            var userOrientation by remember { mutableStateOf(0f) }
+
+            val compassEngine = remember {
+                CompassEngine(context) { newAngle ->
+                    userOrientation = newAngle
+                }
+            }
+
+            DisposableEffect(Unit) {
+                compassEngine.start()
+                onDispose {
+                    compassEngine.stop()
+                }
+            }
+
+            // 1. Calculamos la lista completa de instrucciones cuando cambie la ruta
+            val todasLasInstrucciones = remember(rutaCalculada) {
+                NavigationHelper.generateInstructions(rutaCalculada)
+            }
+
+            // 2. Obtenemos la instrucción actual (la primera de la lista de la ruta restante)
+            val instruccionActual = todasLasInstrucciones.firstOrNull()
 
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -230,6 +264,7 @@ class MainActivity : ComponentActivity() {
                                             rutaCalculada = rutaParaDibujar,
                                             userPosition = userPosition,
                                             currentUserNode = currentUserNode,
+                                            userOrientation=userOrientation,
                                             onPoiClick = { poiTocado:POI ->
                                                 poiParaConfirmar = poiTocado // Abre el popup
                                             },
@@ -264,29 +299,39 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                //Buscador de POI
+                                // =========================================================
+                                // BANNER SUPERIOR (DINÁMICO: BUSCADOR O NAVEGACIÓN)
+                                // =========================================================
                                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
-                                    BuscadorDestino(
-                                        pois = mapaDescargado?.plantas?.flatMap { it.pois } ?: emptyList(),
-                                        rutaActiva = rutaCalculada.isNotEmpty(),
 
-                                        modoRuta2 = activarBuscadorExterno,
-                                        textoDestinoAUX = textoDestinoExterno,
-                                        textoOrigenAUX = textoOrigenExterno,
-
-                                        onVistaPreviaActualizada = { origenId, destinoPoi ->
-                                            origenSeleccionadoId = origenId // Guardamos el nuevo origen (si lo hay)
-                                            poiParaConfirmar = destinoPoi   // Actualizamos la tarjeta y el pin rojo
-                                        },
-                                        onRutaConfirmada = { origenId, destinoPoi ->
-                                            //Guardamos el origen pero NO arrancamos la ruta
-                                            origenSeleccionadoId = origenId
-
-                                            // Forzamos a que aparezca la tarjeta inferior en lugar de arrancar
-                                            poiParaConfirmar = destinoPoi
-                                            //focusManager.clearFocus()
+                                    if (!modoNavegacionActiva) {
+                                        // 1. MODO BÚSQUEDA: Solo mostramos el buscador si NO estamos navegando
+                                        BuscadorDestino(
+                                            pois = mapaDescargado?.plantas?.flatMap { it.pois } ?: emptyList(),
+                                            rutaActiva = rutaCalculada.isNotEmpty(),
+                                            modoRuta2 = activarBuscadorExterno,
+                                            textoDestinoAUX = textoDestinoExterno,
+                                            textoOrigenAUX = textoOrigenExterno,
+                                            onVistaPreviaActualizada = { origenId, destinoPoi ->
+                                                origenSeleccionadoId = origenId
+                                                poiParaConfirmar = destinoPoi
+                                            },
+                                            onRutaConfirmada = { origenId, destinoPoi ->
+                                                origenSeleccionadoId = origenId
+                                                poiParaConfirmar = destinoPoi
+                                            }
+                                        )
+                                    } else {
+                                        // 2. MODO NAVEGACIÓN: Si estamos navegando, mostramos las instrucciones
+                                        // Solo si hay una instrucción válida que mostrar
+                                        val instruccionActual = remember(rutaCalculada) {
+                                            NavigationHelper.generateInstructions(rutaCalculada).firstOrNull()
                                         }
-                                    )
+
+                                        if (instruccionActual != null) {
+                                            NavigationBanner(instruccionActual)
+                                        }
+                                    }
                                 }
 
                                 ControlesNavegacion(
@@ -386,6 +431,7 @@ class MainActivity : ComponentActivity() {
         rutaCalculada: List<Node>,
         userPosition: PointMeters?,
         currentUserNode: Node?,
+        userOrientation: Float = 0f,
         onPoiClick: (POI) -> Unit
     ) {
         val density = LocalDensity.current // NUEVO: Obtenemos la densidad de la pantalla
@@ -470,19 +516,21 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            // 3. NUEVO: Dibuja la posición calculada del usuario (Círculo Azul)
+            // 3. Dibuja la posición calculada del usuario (Círculo Azul)
             userPosition?.let { pos ->
                 val xPos = pos.x * scaleX
                 val yPos = pos.y * scaleY
 
                 val xDp = with(density) { xPos.toDp() }
                 val yDp = with(density) { yPos.toDp() }
-                Box(
+                Icon(
+                    imageVector = Icons.Filled.Navigation, // Flecha de Android
+                    contentDescription = "Posición del Usuario",
+                    tint = Color.Blue,
                     modifier = Modifier
-                        .offset(x = xDp, y =yDp)
-                        .size(15.dp)
-                        .background(Color.Blue, shape = CircleShape)
-                        .border(2.dp, Color.White, CircleShape)
+                        .offset(x = xDp - 12.dp, y = yDp - 12.dp) // Centramos el icono (asumiendo size 24)
+                        .size(24.dp)
+                        .rotate(userOrientation) // ¡Aquí usamos el parámetro!
                 )
             }
 

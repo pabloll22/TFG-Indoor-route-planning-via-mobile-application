@@ -44,8 +44,8 @@ class PositioningEngine(private val knownBeacons: Map<String, PointMeters>) {
         //3. FUSIÓN (70% centroid, 30% trilateración)
         val fused = if (trilateration != null) {
             PointMeters(
-                (0.4f * centroid.x + 0.6f * trilateration.x),
-                (0.4f * centroid.y + 0.6f * trilateration.y)
+                (0.65f * centroid.x + 0.35f * trilateration.x),
+                (0.65f * centroid.y + 0.35f * trilateration.y)
             )
         } else {
             centroid

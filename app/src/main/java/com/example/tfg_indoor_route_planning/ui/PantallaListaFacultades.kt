@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.LocalHotel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -76,7 +77,7 @@ import com.example.tfg_indoor_route_planning.api.MapApiService
                         ) {
                             // Icono de edificio a la izquierda
                             Icon(
-                                imageVector = Icons.Default.CellTower,
+                                imageVector = Icons.Default.LocalHotel,
                                 contentDescription = "Icono Edificio",
                                 tint = Color.Gray,
                                 modifier = Modifier.size(40.dp)
