@@ -4,6 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Stairs
+import androidx.compose.material.icons.filled.Straight
+import androidx.compose.material.icons.filled.TurnLeft
+import androidx.compose.material.icons.filled.TurnRight
+import androidx.compose.material.icons.filled.TurnSlightLeft
+import androidx.compose.material.icons.filled.TurnSlightRight
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.tfg_indoor_route_planning.models.Node
 import kotlin.math.*
@@ -25,16 +31,30 @@ object NavigationHelper {
             val current = ruta[i]
             val next = ruta[i + 1]
 
-            // Calculamos distancia entre estos dos nodos
             val dist = sqrt(
                 (next.position.x - current.position.x).toDouble().pow(2) +
                         (next.position.y - current.position.y).toDouble().pow(2)
             ).toInt()
 
-            // Si hay un tercer nodo, calculamos el giro
+            if (current.plantaId != next.plantaId) {
+                val direccion = if ((next.plantaId?.lastOrNull()?.digitToInt() ?: 0) >
+                    (current.plantaId?.lastOrNull()?.digitToInt() ?: 0))
+                    "Sube" else "Baja"
+
+                instructions.add(
+                    NavInstruction(
+                        text = "$direccion por las escaleras a la ${next.plantaId}",
+                        icon = Icons.Default.Stairs,
+                        distance = dist
+                    )
+                )
+                continue
+            }
+
             if (i < ruta.size - 2) {
                 val afterNext = ruta[i + 2]
 
+                // Cálculo de ángulos
                 val angle1 = atan2((next.position.y - current.position.y).toDouble(), (next.position.x - current.position.x).toDouble())
                 val angle2 = atan2((afterNext.position.y - next.position.y).toDouble(), (afterNext.position.x - next.position.x).toDouble())
 
@@ -42,14 +62,29 @@ object NavigationHelper {
                 if (deltaAngle > 180) deltaAngle -= 360
                 if (deltaAngle < -180) deltaAngle += 360
 
-                val turnText = when {
-                    deltaAngle > 45 -> "Gira a la derecha hacia ${afterNext.name}"
-                    deltaAngle < -45 -> "Gira a la izquierda hacia ${afterNext.name}"
-                    else -> "Continúa recto hacia ${afterNext.name}"
+                // ASIGNACIÓN DINÁMICA DE TEXTO E ICONO
+                val (turnText, icon) = when {
+                    deltaAngle > 60 -> {
+                        "Gira a la derecha hacia ${afterNext.name}" to Icons.Default.TurnRight
+                    }
+                    deltaAngle < -60 -> {
+                        "Gira a la izquierda hacia ${afterNext.name}" to Icons.Default.TurnLeft
+                    }
+                    // Giros suaves
+                    deltaAngle in 20.0..60.0 -> {
+                        "Giro suave a la derecha" to Icons.Default.TurnSlightRight
+                    }
+                    deltaAngle in -60.0..-20.0 -> {
+                        "Giro suave a la izquierda" to Icons.Default.TurnSlightLeft
+                    }
+                    else -> {
+                        "Continúa recto por el pasillo" to Icons.Default.Straight
+                    }
                 }
 
-                instructions.add(NavInstruction(turnText, Icons.Default.ArrowForward, dist))
+                instructions.add(NavInstruction(turnText, icon, dist))
             } else {
+                // Destino
                 instructions.add(NavInstruction("Llegarás a tu destino: ${next.name}", Icons.Default.LocationOn, dist))
             }
         }

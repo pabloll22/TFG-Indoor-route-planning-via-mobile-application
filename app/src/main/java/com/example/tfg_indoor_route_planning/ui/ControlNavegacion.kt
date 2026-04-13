@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tfg_indoor_route_planning.models.POI
@@ -44,6 +46,7 @@ fun BoxScope.ControlesNavegacion(
     onDetenerRutaClick: () -> Unit,
     onCerrarTarjetaClick: () -> Unit,
     onComoLlegarClick: (POI) -> Unit,
+    onIniciarRutaClick: (POI) -> Unit
 ) {
     val textoTiempo = if (distanciaMetros != null && distanciaMetros > 0) {
         " 🚶 " + calcularTiempoEstimado(distanciaMetros)
@@ -87,12 +90,14 @@ fun BoxScope.ControlesNavegacion(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // INFO DE LA RUTA (Textos)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = poiDestinoActivo?.nombre ?: "Destino",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = Color.Black,
+                        maxLines = 2
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -103,30 +108,61 @@ fun BoxScope.ControlesNavegacion(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Button(
-                    onClick = onDetenerRutaClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Icon(
-                        imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
-                        contentDescription = "Detener",
-                        tint = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (modoNavegacionActiva) "Detener" else "Limpiar",
-                        fontWeight = FontWeight.Bold
-                    )
+                // ZONA DE BOTONES
+                Row(verticalAlignment = Alignment.CenterVertically) {
+
+                    // BOTÓN VERDE "INICIAR"
+                    // Solo sale si NO estamos navegando y SI el origen es nuestra ubicación
+                    if (!modoNavegacionActiva && !esVistaPrevia) {
+                        Button(
+                            onClick = { onIniciarRutaClick(poiDestinoActivo!!) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)), // Verde
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Iniciar",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Iniciar", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    // BOTÓN "LIMPIAR / DETENER"
+                    Button(
+                        onClick = onDetenerRutaClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
+                            contentDescription = "Detener",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        if (modoNavegacionActiva || esVistaPrevia) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (modoNavegacionActiva) "Detener" else "Limpiar",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }
     }
+
     // -----------------------------------------------------------------
     // TARJETA INFERIOR CON INFORMACIÓN
     // -----------------------------------------------------------------
@@ -179,25 +215,57 @@ fun BoxScope.ControlesNavegacion(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // 2. BOTÓN PRINCIPAL (Cómo llegar / Vista previa)
-                Button(
-                    onClick = { onComoLlegarClick(poi) },
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
-                    shape = RoundedCornerShape(12.dp)
+                        .height(54.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(
-                        imageVector = if (esVistaPrevia) Icons.Default.Visibility else Icons.Default.Directions,
-                        contentDescription = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
-                        tint = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (esVistaPrevia) "Vista previa" else "Cómo llegar",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // BOTÓN 1: CÓMO LLEGAR
+                    Button(
+                        onClick = { onComoLlegarClick(poi) },
+                        modifier = Modifier.weight(1.6f).fillMaxHeight(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (esVistaPrevia) Icons.Default.Visibility else Icons.Default.Directions,
+                            contentDescription = null,
+                            tint = Color.DarkGray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Cómo llegar",
+                            color = Color.DarkGray,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    // BOTÓN 2: INICIAR
+                    Button(
+                        onClick = { onIniciarRutaClick(poi) },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Iniciar",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

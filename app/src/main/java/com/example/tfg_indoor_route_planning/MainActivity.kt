@@ -342,7 +342,7 @@ class MainActivity : ComponentActivity() {
                                     poiDestinoActivo = mapaDescargado?.plantas?.flatMap { it.pois }?.find { it.nodoId == destinoSeleccionadoId },
                                     distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
 
-                                    // Le decimos qué hacer cuando pulse "Volver"
+                                    // "Volver"
                                     onVolverClick = {
                                         mapaAbiertoId = null
                                         rutaCalculada = emptyList()
@@ -356,7 +356,7 @@ class MainActivity : ComponentActivity() {
                                         textoOrigenExterno=""
                                     },
 
-                                    // Le decimos qué hacer cuando pulse "Detener Ruta"
+                                    // "Detener Ruta"
                                     onDetenerRutaClick = {
                                         rutaCalculada = emptyList()
                                         destinoSeleccionadoId = null
@@ -368,7 +368,7 @@ class MainActivity : ComponentActivity() {
                                         plantaQueDebeParpadearId=null
                                     },
 
-                                    // Le decimos qué hacer cuando pulse la "X" de la tarjeta
+                                    // "X" de la tarjeta
                                     onCerrarTarjetaClick = {
                                         poiParaConfirmar = null
                                     },
@@ -376,40 +376,38 @@ class MainActivity : ComponentActivity() {
                                     // Le decimos qué hacer cuando pulse "Cómo llegar"
                                     onComoLlegarClick = { poi ->
                                         destinoSeleccionadoId = poi.nodoId
-
                                         activarBuscadorExterno = true
                                         textoDestinoExterno = poi.nombre
+                                        textoOrigenExterno = "Mi ubicación"
 
-                                        // Comprobamos si es una "Vista previa" o una ruta normal
-                                        if (origenSeleccionadoId == null) {
-                                            // Ruta normal: empezamos desde donde estamos
-                                            textoOrigenExterno = "Mi ubicación"
-                                        } else {
-                                            // Vista previa: buscamos el nombre del POI que elegimos como origen
-                                            val poiOrigen = mapaDescargado?.plantas
-                                                ?.flatMap { it.pois }
-                                                ?.find { it.nodoId == origenSeleccionadoId }
-
-                                            // Si lo encuentra pone su nombre, si no, un texto por defecto
-                                            textoOrigenExterno = poiOrigen?.nombre ?: "Origen seleccionado"
-                                        }
-
-                                        // Usa el origen que elegido, o "Mi ubicación" por defecto si es null
                                         val idInicio = origenSeleccionadoId ?: currentUserNode?.id
-
                                         if (idInicio != null) {
                                             val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
-                                            Log.d("DEBUG_RUTA", "=========================================")
-                                            Log.d("DEBUG_RUTA", "Origen: $idInicio | Destino: $destinoSeleccionadoId")
-                                            Log.d("DEBUG_RUTA", "Nodos devueltos por A*: ${rutaCalculada.map { it.id }}")
-                                            Log.d("DEBUG_RUTA", "=========================================")
 
-                                            // Calculamos el color del botón inferior
-                                            modoNavegacionActiva = (origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id)
+                                            // IMPORTANTE: Lo mantenemos en falso para que NO salga el banner de "Gira a la derecha"
+                                            modoNavegacionActiva = false
                                         }
+                                        poiParaConfirmar = null
+                                    },
 
-                                        poiParaConfirmar = null // Ocultamos la tarjeta al empezar a caminar
+                                    // BOTÓN VERDE (Iniciar)
+                                    onIniciarRutaClick = { poi ->
+                                        destinoSeleccionadoId = poi.nodoId
+                                        activarBuscadorExterno = true
+                                        textoDestinoExterno = poi.nombre
+
+                                        val idInicio = origenSeleccionadoId ?: currentUserNode?.id
+                                        if (idInicio != null) {
+                                            val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
+                                            rutaCalculada = nuevaRuta ?: emptyList()
+
+                                            // IMPORTANTE: Aquí SÍ activamos el banner superior y quitamos el buscador
+                                            modoNavegacionActiva = true
+
+                                            // Opcional: cerramos la tarjeta de abajo automáticamente para dejar el mapa limpio
+                                            poiParaConfirmar = null
+                                        }
                                     }
                                 )
                             }
@@ -523,14 +521,12 @@ class MainActivity : ComponentActivity() {
 
                 val xDp = with(density) { xPos.toDp() }
                 val yDp = with(density) { yPos.toDp() }
-                Icon(
-                    imageVector = Icons.Filled.Navigation, // Flecha de Android
-                    contentDescription = "Posición del Usuario",
-                    tint = Color.Blue,
+                Box(
                     modifier = Modifier
-                        .offset(x = xDp - 12.dp, y = yDp - 12.dp) // Centramos el icono (asumiendo size 24)
-                        .size(24.dp)
-                        .rotate(userOrientation) // ¡Aquí usamos el parámetro!
+                        .offset(x = xDp, y =yDp)
+                        .size(15.dp)
+                        .background(Color.Blue, shape = CircleShape)
+                        .border(2.dp, Color.White, CircleShape)
                 )
             }
 
@@ -541,12 +537,14 @@ class MainActivity : ComponentActivity() {
 
                 val xDp = with(density) { xPos.toDp() }
                 val yDp = with(density) { yPos.toDp() }
-                Box(
+                Icon(
+                    imageVector = Icons.Filled.Navigation, // Flecha de Android
+                    contentDescription = "Posición del Usuario",
+                    tint = Color.Magenta,
                     modifier = Modifier
-                        .offset(x = xDp-5.dp, y = yDp-5.dp)
-                        .size(10.dp)
-                        .background(Color.Magenta, shape = CircleShape)
-                        .border(1.dp, Color.Black, CircleShape)
+                        .offset(x = xDp - 12.dp, y = yDp - 12.dp) // Centramos el icono (asumiendo size 24)
+                        .size(24.dp)
+                        .rotate(userOrientation) // ¡Aquí usamos el parámetro!
                 )
             }
 

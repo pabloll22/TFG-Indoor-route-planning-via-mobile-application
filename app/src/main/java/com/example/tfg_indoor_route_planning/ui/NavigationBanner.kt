@@ -86,12 +86,6 @@ fun NavigationBanner(instruction: NavInstruction) {
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Straighten, // Icono de regla/distancia
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(14.dp)
-                        )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "En ${instruction.distance} metros",
