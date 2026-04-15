@@ -6,11 +6,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
@@ -42,32 +45,17 @@ fun BoxScope.ControlesNavegacion(
     poiParaConfirmar: POI?,
     poiDestinoActivo: POI?,
     distanciaMetros: Int?,
-    onVolverClick: () -> Unit,
     onDetenerRutaClick: () -> Unit,
     onCerrarTarjetaClick: () -> Unit,
     onComoLlegarClick: (POI) -> Unit,
-    onIniciarRutaClick: (POI) -> Unit
+    onIniciarRutaClick: (POI) -> Unit,
+    listaFavoritosIds: Set<String>,
+    toggleFavorito: (String) -> Unit
 ) {
     val textoTiempo = if (distanciaMetros != null && distanciaMetros > 0) {
         " 🚶 " + calcularTiempoEstimado(distanciaMetros)
     } else {
         ""
-    }
-    // -----------------------------------------------------------------
-    // BOTÓN DE VOLVER A LA LISTA
-    // -----------------------------------------------------------------
-    FloatingActionButton(
-        onClick = onVolverClick,
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(
-                end = 16.dp,
-                // Si la tarjeta está visible, subimos el botón para que no lo tape
-                bottom = if (poiParaConfirmar != null) 180.dp else 16.dp
-            ),
-        containerColor = Color(0xFF1E88E5)
-    ) {
-        Text("Volver", color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
     }
 
     // -----------------------------------------------------------------
@@ -207,6 +195,17 @@ fun BoxScope.ControlesNavegacion(
                         )
                         Text(text = "Punto de interés", color = Color.Gray, fontSize = 14.sp)
                     }
+
+                    val esFavorito = listaFavoritosIds.contains(poi.id)
+
+                    IconButton(onClick = { toggleFavorito(poi.id) }) {
+                        Icon(
+                            imageVector = if (esFavorito) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = "Guardar",
+                            tint = if (esFavorito) Color(0xFF4CAF50) else Color.Gray
+                        )
+                    }
+
                     IconButton(onClick = onCerrarTarjetaClick) {
                         Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
                     }
@@ -344,5 +343,34 @@ fun calcularTiempoEstimado(distanciaMetros: Int?): String {
         }
     }else{
         return ""
+    }
+}
+
+@Composable
+fun NavigationItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(28.dp)
+        )
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = color,
+            style = MaterialTheme.typography.labelMedium
+        )
     }
 }

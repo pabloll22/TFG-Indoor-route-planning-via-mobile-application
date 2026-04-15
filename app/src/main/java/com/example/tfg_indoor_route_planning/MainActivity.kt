@@ -21,22 +21,38 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Accessible
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Accessible
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.BookmarkRemove
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -58,7 +74,9 @@ import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.ControlesNavegacion
+import com.example.tfg_indoor_route_planning.ui.HojaGuardadosBottomSheet
 import com.example.tfg_indoor_route_planning.ui.NavigationBanner
+import com.example.tfg_indoor_route_planning.ui.NavigationItem
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import com.example.tfg_indoor_route_planning.ui.SelectorDePlantas
 import kotlinx.coroutines.launch
@@ -106,6 +124,7 @@ class MainActivity : ComponentActivity() {
     private var mapaAbiertoId by mutableStateOf<String?>(null)
     private var poiParaConfirmar by mutableStateOf<POI?>(null)
     private var pois by mutableStateOf<List<POI>>(emptyList())
+    var todosLosPoisDelEdificio by mutableStateOf<List<POI>>(emptyList())
     private var plantaActivaId by mutableStateOf<String?>(null)
     private var plantaQueDebeParpadearId by mutableStateOf<String?>(null)
     // Esto guarda el RSSI suavizado y la hora exacta en la que lo escuchamos por última vez
@@ -136,6 +155,18 @@ class MainActivity : ComponentActivity() {
             var activarBuscadorExterno by remember { mutableStateOf(false) }
             var textoDestinoExterno by remember { mutableStateOf("") }
             var textoOrigenExterno by remember { mutableStateOf("") }
+
+            var listaFavoritosIds by remember { mutableStateOf(setOf<String>()) }
+            var mostrarHojaGuardados by remember { mutableStateOf(false) } // Para controlar el BottomSheet de guardados
+
+            // Función para añadir/quitar de favoritos
+            val toggleFavorito: (String) -> Unit = { id ->
+                listaFavoritosIds = if (listaFavoritosIds.contains(id)) {
+                    listaFavoritosIds - id
+                } else {
+                    listaFavoritosIds + id
+                }
+            }
 
             // ==========================================
             // BRÚJULA
@@ -253,7 +284,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         )
                                         Spacer(modifier = Modifier.width(16.dp))
-                                        ListSection(Modifier.weight(1f).fillMaxHeight())
+                                        //ListSection(Modifier.weight(1f).fillMaxHeight())
                                     }
                                 } else {
                                     Column(Modifier.padding(16.dp)) {
@@ -334,6 +365,74 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                // 2. BARRA DE NAVEGACIÓN INTEGRADA (Estilo Material 3)
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth() // Ocupa todo el ancho
+                                        .height(80.dp), // Altura estándar de barras de navegación
+                                    color = Color.White,
+                                    tonalElevation = 8.dp, // Crea una sutil sombra sobre el mapa
+                                    shadowElevation = 16.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceEvenly // Distribuye los 3 botones por igual
+                                    ) {
+
+                                        // BOTÓN 1: EXPLORAR
+                                        NavigationItem(
+                                            icon = Icons.Default.Explore,
+                                            label = "Explorar",
+                                            color = Color(0xFF1E88E5), // Azul Google
+                                            onClick = { /* Tu lógica de explorar */ }
+                                        )
+
+                                        // BOTÓN 2: GUARDADOS (Bookmark)
+                                        NavigationItem(
+                                            icon = Icons.Default.Bookmark,
+                                            label = "Guardado",
+                                            color = Color(0xFF4CAF50), // Verde Google para guardados
+                                            onClick = { mostrarHojaGuardados = true }
+                                        )
+
+                                        // BOTÓN 3: VOLVER (Integrado aquí)
+                                        NavigationItem(
+                                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                                            label = "Volver",
+                                            color = Color.DarkGray,
+                                            onClick = {
+                                                mapaAbiertoId = null
+                                                rutaCalculada = emptyList()
+                                                destinoSeleccionadoId = null
+                                                poiParaConfirmar = null // También cerramos la tarjeta por si acaso
+                                                modoNavegacionActiva = false
+                                                origenSeleccionadoId = null
+                                                plantaActivaId=null
+                                                activarBuscadorExterno = false
+                                                textoDestinoExterno = ""
+                                                textoOrigenExterno=""
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (mostrarHojaGuardados) {
+                                    HojaGuardadosBottomSheet(
+                                        listaFavoritosIds = listaFavoritosIds,
+                                        todosLosPoisDelEdificio = todosLosPoisDelEdificio, // o tu lista global
+                                        onDismiss = { mostrarHojaGuardados = false },
+                                        onToggleFavorito = { id -> toggleFavorito(id) },
+                                        onNavigateClick = { poi ->
+                                            // Cuando el usuario le da a "Ir" en la tarjeta, hacemos estas dos cosas:
+                                            // 2. Activamos la tarjeta de información pasándole el POI
+                                            poiParaConfirmar = poi
+                                            mostrarHojaGuardados = false
+                                        }
+                                    )
+                                }
+
                                 ControlesNavegacion(
                                     hayRutaActiva = rutaCalculada.isNotEmpty(),
                                     modoNavegacionActiva = modoNavegacionActiva,
@@ -341,20 +440,6 @@ class MainActivity : ComponentActivity() {
                                     poiParaConfirmar = poiParaConfirmar,
                                     poiDestinoActivo = mapaDescargado?.plantas?.flatMap { it.pois }?.find { it.nodoId == destinoSeleccionadoId },
                                     distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
-
-                                    // "Volver"
-                                    onVolverClick = {
-                                        mapaAbiertoId = null
-                                        rutaCalculada = emptyList()
-                                        destinoSeleccionadoId = null
-                                        poiParaConfirmar = null // También cerramos la tarjeta por si acaso
-                                        modoNavegacionActiva = false
-                                        origenSeleccionadoId = null
-                                        plantaActivaId=null
-                                        activarBuscadorExterno = false
-                                        textoDestinoExterno = ""
-                                        textoOrigenExterno=""
-                                    },
 
                                     // "Detener Ruta"
                                     onDetenerRutaClick = {
@@ -408,7 +493,9 @@ class MainActivity : ComponentActivity() {
                                             // Opcional: cerramos la tarjeta de abajo automáticamente para dejar el mapa limpio
                                             poiParaConfirmar = null
                                         }
-                                    }
+                                    },
+                                    listaFavoritosIds = listaFavoritosIds,
+                                    toggleFavorito = toggleFavorito
                                 )
                             }
                         }
@@ -432,154 +519,164 @@ class MainActivity : ComponentActivity() {
         userOrientation: Float = 0f,
         onPoiClick: (POI) -> Unit
     ) {
-        val density = LocalDensity.current // NUEVO: Obtenemos la densidad de la pantalla
+        val density = LocalDensity.current
+
+        // --- NUEVO: ESTADOS PARA EL ZOOM Y DESPLAZAMIENTO ---
+        var scale by remember { mutableStateOf(1f) }
+        var offset by remember { mutableStateOf(Offset.Zero) }
+
         BoxWithConstraints(
             modifier = modifier
-                .border(2.dp, Color.Gray)
+                // 1. AÑADIMOS ESPACIO ARRIBA Y ABAJO
+                //.padding(vertical = 70.dp,horizontal = 2.dp)
+                //.padding(horizontal = 2.dp)
+                .padding(top = 70.dp)
+                .padding(bottom = 65.dp)
+
+                .border(2.dp, Color.White, RoundedCornerShape(8.dp)) // Un toque redondeado queda mejor
                 .background(Color.White)
+                .clip(RoundedCornerShape(8.dp)) // Recortamos con el mismo redondeo
+                // --- DETECTOR DE GESTOS ---
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        // 1. Actualizamos escala
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+
+                        // 2. Calculamos los límites máximos permitidos para el desplazamiento
+                        // Usamos size.width y size.height que están disponibles en el pointerInput
+                        val maxX = (size.width.toFloat() * (newScale - 1)) / 2
+                        val maxY = (size.height.toFloat() * (newScale - 1)) / 2
+
+                        // 3. Aplicamos el movimiento y lo "encerramos" (coerceIn) en los límites
+                        val newOffset = offset + pan * newScale
+
+                        scale = newScale
+                        offset = Offset(
+                            x = newOffset.x.coerceIn(-maxX, maxX),
+                            y = newOffset.y.coerceIn(-maxY, maxY)
+                        )
+                    }
+                }
         ) {
             val scaleX = constraints.maxWidth.toFloat() / viewSize
             val scaleY = constraints.maxHeight.toFloat() / viewSize
 
-            planoFondo?.let { miImagenDescargada ->
-                Image(
-                    // 2. Usamos 'bitmap =' en lugar de 'painter ='
-                    bitmap = miImagenDescargada,
-                    contentDescription = "Plano del edificio descargado",
-
-                    // 3. Mantén los modificadores que ya tuvieras, por ejemplo:
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.FillBounds
-                )
-            }
-
-            // Dibujamos la ruta debajo de los nodos para que no los tape
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                if (rutaCalculada.size > 1) {
-                    for (i in 0 until rutaCalculada.size - 1) {
-                        val startNode = rutaCalculada[i]
-                        val endNode = rutaCalculada[i + 1]
-
-                        drawLine(
-                            color = Color.Blue, // Color Cyan brillante para la ruta
-                            start = Offset((startNode.position.x * scaleX), (startNode.position.y * scaleY)),
-                            end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
-                            strokeWidth = 12f,
-                            cap = androidx.compose.ui.graphics.StrokeCap.Round
-                        )
-                    }
-                }
-            }
-
-            // 1. Dibujamos los NODOS de navegación (Verde)
-            nodes.forEach { node ->
-                val xPos = node.position.x * scaleX
-                val yPos = node.position.y * scaleY
-
-                val xDp = with(density) { xPos.toDp() }
-                val yDp = with(density) { yPos.toDp() }
-
-                Box(
-                    modifier = Modifier
-                        //.offset(x = (xPos / 2.75f).dp, y = (yPos / 2.75f).dp)
-                        .offset(xDp-5.dp, yDp-5.dp)
-                        .size(12.dp)
-                        .background(Color.Green, shape = CircleShape)
-                        .border(1.dp, Color.Black, CircleShape)
-                ){
-                    Text(
-                        text = node.id,
-                        color = Color.Black,
-                        fontSize = 6.sp, // Letra microscópica para que quepa
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1, // Obligamos a que sea una sola línea
-                        softWrap = false // Evitamos que haga saltos de línea raros
+            // --- NUEVO: CONTENEDOR QUE APLICA EL ZOOM Y MOVIMIENTO ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+            ) {
+                // 1. IMAGEN DE FONDO
+                planoFondo?.let { miImagenDescargada ->
+                    Image(
+                        bitmap = miImagenDescargada,
+                        contentDescription = "Plano del edificio",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.FillBounds
                     )
                 }
-            }
 
-            // 2. Beacons detectados (Rojo) - Ahora representa los beacons conocidos
-            knownBeacons.values.forEach { beaconPos ->
-                val xPos = beaconPos.x * scaleX
-                val yPos = beaconPos.y * scaleY
+                // 2. DIBUJO DE LA RUTA (CANVAS)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    if (rutaCalculada.size > 1) {
+                        for (i in 0 until rutaCalculada.size - 1) {
+                            val startNode = rutaCalculada[i]
+                            val endNode = rutaCalculada[i + 1]
+                            drawLine(
+                                color = Color.Blue,
+                                start = Offset(startNode.position.x * scaleX, startNode.position.y * scaleY),
+                                end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
+                                strokeWidth = 12f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        }
+                    }
+                }
 
-                //Convertimos los Píxeles a Dp correctamente
-                val xDp = with(density) { xPos.toDp() }
-                val yDp = with(density) { yPos.toDp() }
-                Box(
-                    modifier = Modifier
-                        .offset(x = xDp, y =yDp)
-                        .size(12.dp)
-                        .background(Color.Red, shape = MaterialTheme.shapes.small)
-                )
-            }
-
-            // 3. Dibuja la posición calculada del usuario (Círculo Azul)
-            userPosition?.let { pos ->
-                val xPos = pos.x * scaleX
-                val yPos = pos.y * scaleY
-
-                val xDp = with(density) { xPos.toDp() }
-                val yDp = with(density) { yPos.toDp() }
-                Box(
-                    modifier = Modifier
-                        .offset(x = xDp, y =yDp)
-                        .size(15.dp)
-                        .background(Color.Blue, shape = CircleShape)
-                        .border(2.dp, Color.White, CircleShape)
-                )
-            }
-
-            // EL USO DE currentUserNode: Dibuja el nodo "imantado"
-            currentUserNode?.let { node ->
-                val xPos = node.position.x * scaleX
-                val yPos = node.position.y * scaleY
-
-                val xDp = with(density) { xPos.toDp() }
-                val yDp = with(density) { yPos.toDp() }
-                Icon(
-                    imageVector = Icons.Filled.Navigation, // Flecha de Android
-                    contentDescription = "Posición del Usuario",
-                    tint = Color.Magenta,
-                    modifier = Modifier
-                        .offset(x = xDp - 12.dp, y = yDp - 12.dp) // Centramos el icono (asumiendo size 24)
-                        .size(24.dp)
-                        .rotate(userOrientation) // ¡Aquí usamos el parámetro!
-                )
-            }
-
-            // --- 2. DIBUJAMOS LOS POIs (Naranja) ---
-            pois.forEach { poi ->
-                // Buscamos las coordenadas del nodo al que pertenece este POI
-                val nodoDelPoi = nodes.find { it.id == poi.nodoId }
-
-                if (nodoDelPoi != null) {
-                    val xPos = nodoDelPoi.position.x * scaleX
-                    val yPos = nodoDelPoi.position.y * scaleY
-                    val xDp = with(density) { xPos.toDp() }
-                    val yDp = with(density) { yPos.toDp() }
-
-                    val esDestino = (poi.nodoId == destinoSeleccionadoId || poi.nodoId == poiParaConfirmar?.nodoId)
-
-                    // Definimos el tamaño y color dinámicamente
-                    val tamanoCaja = if (esDestino) 36.dp else 24.dp
-                    val ajusteOffset = if (esDestino) 18.dp else 12.dp // La mitad del tamaño para centrarlo
-                    val colorFondo = if (esDestino) Color(0xFFD32F2F) else Color(0xFFFF9800) // Rojo si es destino, naranja si no
-                    val grosorBorde = if (esDestino) 3.dp else 2.dp
-
-                    // Dibujamos un marcador naranja más grande para que el usuario lo toque
+                // 3. NODOS DE NAVEGACIÓN
+                nodes.forEach { node ->
+                    val xDp = with(density) { (node.position.x * scaleX).toDp() }
+                    val yDp = with(density) { (node.position.y * scaleY).toDp() }
                     Box(
-                        contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .offset(x = xDp - ajusteOffset, y = yDp - ajusteOffset)
-                            .size(tamanoCaja)
-                            .background(colorFondo, shape = RoundedCornerShape(8.dp))
-                            .border(grosorBorde, Color.White, RoundedCornerShape(8.dp))
-                            // .then(if (esDestino) Modifier.shadow(8.dp, RoundedCornerShape(8.dp)) else Modifier)
-                            .clickable { onPoiClick(poi) }
+                            .offset(xDp - 5.dp, yDp - 5.dp)
+                            .size(12.dp)
+                            .background(Color.Green, shape = CircleShape)
+                            .border(1.dp, Color.Black, CircleShape)
                     ) {
-                        // Un pequeño icono que también crece si es el destino
-                        Text("📍", fontSize = if (esDestino) 18.sp else 12.sp)
+                        Text(node.id, color = Color.Black, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // 4. BEACONS CONOCIDOS
+                knownBeacons.values.forEach { beaconPos ->
+                    val xDp = with(density) { (beaconPos.x * scaleX).toDp() }
+                    val yDp = with(density) { (beaconPos.y * scaleY).toDp() }
+                    Box(
+                        modifier = Modifier
+                            .offset(xDp, yDp)
+                            .size(12.dp)
+                            .background(Color.Red, shape = MaterialTheme.shapes.small)
+                    )
+                }
+
+                // 5. POSICIÓN DEL USUARIO (Círculo Azul)
+                userPosition?.let { pos ->
+                    val xDp = with(density) { (pos.x * scaleX).toDp() }
+                    val yDp = with(density) { (pos.y * scaleY).toDp() }
+                    Box(
+                        modifier = Modifier
+                            .offset(xDp, yDp)
+                            .size(15.dp)
+                            .background(Color.Blue, shape = CircleShape)
+                            .border(2.dp, Color.White, CircleShape)
+                    )
+                }
+
+                // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
+                currentUserNode?.let { node ->
+                    val xDp = with(density) { (node.position.x * scaleX).toDp() }
+                    val yDp = with(density) { (node.position.y * scaleY).toDp() }
+                    Icon(
+                        imageVector = Icons.Filled.Navigation,
+                        contentDescription = null,
+                        tint = Color.Magenta,
+                        modifier = Modifier
+                            .offset(xDp - 12.dp, yDp - 12.dp)
+                            .size(24.dp)
+                            .rotate(userOrientation)
+                    )
+                }
+
+                // 7. PUNTOS DE INTERÉS (POIs)
+                pois.forEach { poi ->
+                    val nodoDelPoi = nodes.find { it.id == poi.nodoId }
+                    if (nodoDelPoi != null) {
+                        val xDp = with(density) { (nodoDelPoi.position.x * scaleX).toDp() }
+                        val yDp = with(density) { (nodoDelPoi.position.y * scaleY).toDp() }
+                        val esDestino = (poi.nodoId == destinoSeleccionadoId || poi.nodoId == poiParaConfirmar?.nodoId)
+
+                        val tamanoCaja = if (esDestino) 36.dp else 24.dp
+                        val ajusteOffset = if (esDestino) 18.dp else 12.dp
+                        val colorFondo = if (esDestino) Color(0xFFD32F2F) else Color(0xFFFF9800)
+
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .offset(xDp - ajusteOffset, yDp - ajusteOffset)
+                                .size(tamanoCaja)
+                                .background(colorFondo, shape = RoundedCornerShape(8.dp))
+                                .border(if (esDestino) 3.dp else 2.dp, Color.White, RoundedCornerShape(8.dp))
+                                .clickable { onPoiClick(poi) }
+                        ) {
+                            Text("📍", fontSize = if (esDestino) 18.sp else 12.sp)
+                        }
                     }
                 }
             }
@@ -648,6 +745,7 @@ class MainActivity : ComponentActivity() {
                     planoFondo = base64ToImageBitmap(planta.imagenBase64)
                 }
                 val todosLosNodosDelEdificio = mapaDescargado!!.plantas.flatMap { it.nodos }
+                todosLosPoisDelEdificio = mapaDescargado!!.plantas.flatMap { it.pois }
 
                 // Inicializamos los motores
                  engine = PositioningEngine(knownBeacons)
