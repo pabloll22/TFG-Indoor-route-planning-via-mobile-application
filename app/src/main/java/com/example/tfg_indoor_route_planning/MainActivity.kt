@@ -79,6 +79,7 @@ import com.example.tfg_indoor_route_planning.ui.NavigationBanner
 import com.example.tfg_indoor_route_planning.ui.NavigationItem
 import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import com.example.tfg_indoor_route_planning.ui.SelectorDePlantas
+import com.example.tfg_indoor_route_planning.web_scrapping.PantallaExplorarSheet
 import kotlinx.coroutines.launch
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -159,6 +160,8 @@ class MainActivity : ComponentActivity() {
             var listaFavoritosIds by remember { mutableStateOf(setOf<String>()) }
             var mostrarHojaGuardados by remember { mutableStateOf(false) } // Para controlar el BottomSheet de guardados
 
+            var mostrarHojaExplorar by remember { mutableStateOf(false) }
+
             // Función para añadir/quitar de favoritos
             val toggleFavorito: (String) -> Unit = { id ->
                 listaFavoritosIds = if (listaFavoritosIds.contains(id)) {
@@ -233,7 +236,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     // =========================================================
-                    // PANTALLA 2: EL MAPA INTERACTIVO (¡Tu código responsive!)
+                    // PANTALLA 2: EL MAPA INTERACTIVO
                     // =========================================================
                     else {
                         if (isLoading) {
@@ -365,7 +368,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // 2. BARRA DE NAVEGACIÓN INTEGRADA (Estilo Material 3)
+                                // 2. BARRA DE NAVEGACIÓN INTEGRADA
                                 Surface(
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
@@ -386,14 +389,14 @@ class MainActivity : ComponentActivity() {
                                             icon = Icons.Default.Explore,
                                             label = "Explorar",
                                             color = Color(0xFF1E88E5), // Azul Google
-                                            onClick = { /* Tu lógica de explorar */ }
+                                            onClick = { mostrarHojaExplorar = true }
                                         )
 
                                         // BOTÓN 2: GUARDADOS (Bookmark)
                                         NavigationItem(
                                             icon = Icons.Default.Bookmark,
                                             label = "Guardado",
-                                            color = Color(0xFF4CAF50), // Verde Google para guardados
+                                            color = Color(0xFF4CAF50),
                                             onClick = { mostrarHojaGuardados = true }
                                         )
 
@@ -430,6 +433,12 @@ class MainActivity : ComponentActivity() {
                                             poiParaConfirmar = poi
                                             mostrarHojaGuardados = false
                                         }
+                                    )
+                                }
+
+                                if (mostrarHojaExplorar) {
+                                    PantallaExplorarSheet(
+                                        onDismiss = { mostrarHojaExplorar = false }
                                     )
                                 }
 

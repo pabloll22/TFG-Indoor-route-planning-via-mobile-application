@@ -15,10 +15,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Engineering
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.LocalHotel
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -28,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,11 +85,12 @@ import com.example.tfg_indoor_route_planning.api.MapApiService
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Icono de edificio a la izquierda
+                            val iconoDinamico = obtenerIconoFacultad(mapaInfo.nombre)
+
                             Icon(
-                                imageVector = Icons.Default.LocalHotel,
+                                imageVector = iconoDinamico,
                                 contentDescription = "Icono Edificio",
-                                tint = Color.Gray,
+                                tint = Color(0xFF1E88E5), // Lo he puesto azul para que combine con la cabecera, pero puedes dejarlo Color.Gray
                                 modifier = Modifier.size(40.dp)
                             )
                             Spacer(modifier = Modifier.width(16.dp))
@@ -91,11 +102,6 @@ import com.example.tfg_indoor_route_planning.api.MapApiService
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = Color.Black
-                                )
-                                Text(
-                                    text = "ID: ${mapaInfo.mapaId}",
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
                                 )
                             }
 
@@ -111,3 +117,19 @@ import com.example.tfg_indoor_route_planning.api.MapApiService
             }
         }
     }
+
+fun obtenerIconoFacultad(nombre: String): ImageVector {
+    val nombreMinusculas = nombre.lowercase()
+
+    return when {
+        nombreMinusculas.contains("etsii") || nombreMinusculas.contains("computadores") -> Icons.Default.Computer
+        nombreMinusculas.contains("casa") -> Icons.Default.Home
+        nombreMinusculas.contains("telecomunicaci") -> Icons.Default.CellTower
+        nombreMinusculas.contains("medicina") || nombreMinusculas.contains("salud") -> Icons.Default.LocalHospital
+        nombreMinusculas.contains("ciencia") || nombreMinusculas.contains("química") -> Icons.Default.Science
+        nombreMinusculas.contains("derecho") -> Icons.Default.AccountBalance // Parecido a un juzgado/institución
+        nombreMinusculas.contains("letras") || nombreMinusculas.contains("educación") -> Icons.Default.MenuBook
+        nombreMinusculas.contains("ingeniería") || nombreMinusculas.contains("industrial") -> Icons.Default.Engineering
+        else -> Icons.Default.Business // Icono de edificio de oficinas por defecto
+    }
+}

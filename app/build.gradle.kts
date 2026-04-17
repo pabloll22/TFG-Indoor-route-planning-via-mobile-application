@@ -67,6 +67,11 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
+    // Para el Scraping de la web de la UMA
+    implementation("org.jsoup:jsoup:1.17.2")
+    // Para cargar las imágenes de las noticias
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
     // AltBeacon Library for BLE
     implementation(libs.android.beacon.library)
 }

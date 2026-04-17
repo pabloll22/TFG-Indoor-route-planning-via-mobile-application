@@ -19,7 +19,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -53,7 +55,7 @@ fun BoxScope.ControlesNavegacion(
     toggleFavorito: (String) -> Unit
 ) {
     val textoTiempo = if (distanciaMetros != null && distanciaMetros > 0) {
-        " 🚶 " + calcularTiempoEstimado(distanciaMetros)
+        " " + calcularTiempoEstimado(distanciaMetros)
     } else {
         ""
     }
@@ -78,7 +80,7 @@ fun BoxScope.ControlesNavegacion(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // INFO DE LA RUTA (Textos)
+                // INFO DE LA RUTA (Textos e Iconos)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = poiDestinoActivo?.nombre ?: "Destino",
@@ -87,13 +89,43 @@ fun BoxScope.ControlesNavegacion(
                         color = Color.Black,
                         maxLines = 2
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "📍 $distanciaMetros metros\n$textoTiempo",
-                        color = Color(0xFF1E88E5),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 1. Fila de la distancia
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = "Distancia",
+                            tint = Color(0xFF1E88E5),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "$distanciaMetros metros",
+                            color = Color(0xFF1E88E5),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // 2. Fila del tiempo
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = "Tiempo estimado",
+                            tint = Color(0xFF1E88E5),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = textoTiempo,
+                            color = Color(0xFF1E88E5),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
