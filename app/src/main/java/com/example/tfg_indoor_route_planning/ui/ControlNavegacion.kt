@@ -52,7 +52,8 @@ fun BoxScope.ControlesNavegacion(
     onComoLlegarClick: (POI) -> Unit,
     onIniciarRutaClick: (POI) -> Unit,
     listaFavoritosIds: Set<String>,
-    toggleFavorito: (String) -> Unit
+    toggleFavorito: (String) -> Unit,
+    origenEsUbicacionUsuario: Boolean
 ) {
     val textoTiempo = if (distanciaMetros != null && distanciaMetros > 0) {
         " " + calcularTiempoEstimado(distanciaMetros)
@@ -137,19 +138,27 @@ fun BoxScope.ControlesNavegacion(
                     // Solo sale si NO estamos navegando y SI el origen es nuestra ubicación
                     if (!modoNavegacionActiva && !esVistaPrevia) {
                         Button(
-                            onClick = { onIniciarRutaClick(poiDestinoActivo!!) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)), // Verde
+                            onClick = {
+                                if (origenEsUbicacionUsuario) onIniciarRutaClick(poiDestinoActivo!!)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color.LightGray
+                            ),
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = "Iniciar",
-                                tint = Color.White,
+                                tint = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Iniciar", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(
+                                "Iniciar",
+                                fontWeight = FontWeight.Bold,
+                                color = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray
+                            )
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -277,22 +286,26 @@ fun BoxScope.ControlesNavegacion(
 
                     // BOTÓN 2: INICIAR
                     Button(
-                        onClick = { onIniciarRutaClick(poi) },
+                        onClick = {
+                            if (origenEsUbicacionUsuario) onIniciarRutaClick(poi)
+                        },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color.LightGray
+                        ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Iniciar",
-                            color = Color.White,
+                            color = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )

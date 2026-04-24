@@ -72,6 +72,7 @@ import com.example.tfg_indoor_route_planning.models.Mapa
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
+import com.example.tfg_indoor_route_planning.models.obtenerEstiloPoi
 import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.ControlesNavegacion
 import com.example.tfg_indoor_route_planning.ui.HojaGuardadosBottomSheet
@@ -135,6 +136,11 @@ class MainActivity : ComponentActivity() {
     private val activeBeacons = mutableMapOf<String, BeaconState>()
     private val RSSI_ALPHA = 0.15 // Factor de suavizado (ajusta entre 0.1 y 0.3)
     private val STALE_TIMEOUT_MS = 3000L // Si pasan 3 segundos sin escuchar un beacon, lo borramos
+    private var ancho: Float = 0.0f
+    private var largo: Float = 0.0f
+
+    private var modoNavegacionActiva by  mutableStateOf(false)
+    private var origenSeleccionadoId by mutableStateOf<String?>(null)
 
     @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
@@ -149,8 +155,6 @@ class MainActivity : ComponentActivity() {
         checkAndRequestPermissions()
         // Lanzamos la descarga nada más abrir la app
         setContent {
-            var modoNavegacionActiva by remember { mutableStateOf(false) }
-            var origenSeleccionadoId by remember { mutableStateOf<String?>(null) }
             //var plantaActivaId by remember { mutableStateOf<String?>(null) }
 
             var activarBuscadorExterno by remember { mutableStateOf(false) }
@@ -460,6 +464,7 @@ class MainActivity : ComponentActivity() {
                                         textoDestinoExterno = ""
                                         textoOrigenExterno=""
                                         plantaQueDebeParpadearId=null
+                                        poiParaConfirmar = null
                                     },
 
                                     // "X" de la tarjeta
@@ -472,7 +477,12 @@ class MainActivity : ComponentActivity() {
                                         destinoSeleccionadoId = poi.nodoId
                                         activarBuscadorExterno = true
                                         textoDestinoExterno = poi.nombre
-                                        textoOrigenExterno = "Mi ubicación"
+                                        if (origenSeleccionadoId != null) {
+                                            val poiOrigen = todosLosPoisDelEdificio.find { it.nodoId == origenSeleccionadoId }
+                                            textoOrigenExterno = poiOrigen?.nombre ?: "Mi ubicación"
+                                        } else {
+                                            textoOrigenExterno = "Mi ubicación"
+                                        }
 
                                         val idInicio = origenSeleccionadoId ?: currentUserNode?.id
                                         if (idInicio != null) {
@@ -504,7 +514,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     listaFavoritosIds = listaFavoritosIds,
-                                    toggleFavorito = toggleFavorito
+                                    toggleFavorito = toggleFavorito,
+                                    origenEsUbicacionUsuario = origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id
                                 )
                             }
                         }
@@ -533,6 +544,13 @@ class MainActivity : ComponentActivity() {
         // --- NUEVO: ESTADOS PARA EL ZOOM Y DESPLAZAMIENTO ---
         var scale by remember { mutableStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }
+
+        val diccionarioNodos = remember(nodes) {
+            nodes.associateBy { it.id }
+        }
+
+        // Variable para activar/desactivar las líneas con un botón
+        var mostrarGrafoDebug by remember { mutableStateOf(true) }
 
         BoxWithConstraints(
             modifier = modifier
@@ -567,8 +585,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
         ) {
-            val scaleX = constraints.maxWidth.toFloat() / viewSize
-            val scaleY = constraints.maxHeight.toFloat() / viewSize
+            val scaleX = constraints.maxWidth.toFloat() / ancho
+            val scaleY = constraints.maxHeight.toFloat() / largo
 
             // --- NUEVO: CONTENEDOR QUE APLICA EL ZOOM Y MOVIMIENTO ---
             Box(
@@ -606,6 +624,38 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+
+                    if (mostrarGrafoDebug) {
+                        nodes.forEach { nodo ->
+                            val startX = (nodo.position.x * scaleX).toFloat()
+                            val startY = (nodo.position.y * scaleY).toFloat()
+
+                            // 2. Dibujar las líneas hacia sus vecinos
+                            nodo.neighbors.forEach { idVecino ->
+                                val vecino = diccionarioNodos[idVecino]
+                                if (vecino != null) {
+                                    val endX = (vecino.position.x * scaleX).toFloat()
+                                    val endY = (vecino.position.y * scaleY).toFloat()
+
+                                    drawLine(
+                                        color = Color.Cyan.copy(alpha = 0.6f),
+                                        start = Offset(startX, startY),
+                                        end = Offset(endX, endY),
+                                        strokeWidth = 4f
+                                    )
+                                } else {
+                                    Log.e("Grafo_Debug", "El nodo ${nodo.id} apunta a un vecino que no existe: $idVecino")
+                                }
+                            }
+
+                            // 3. Dibujar un puntito rojo en cada nodo
+                            drawCircle(
+                                color = Color.Red.copy(alpha = 0.8f),
+                                radius = 6f, // Un pelín más grande también
+                                center = Offset(startX, startY)
+                            )
+                        }
+                    }
                 }
 
                 // 3. NODOS DE NAVEGACIÓN
@@ -614,8 +664,8 @@ class MainActivity : ComponentActivity() {
                     val yDp = with(density) { (node.position.y * scaleY).toDp() }
                     Box(
                         modifier = Modifier
-                            .offset(xDp - 5.dp, yDp - 5.dp)
-                            .size(12.dp)
+                            .offset(xDp - 3.dp, yDp - 3.dp)
+                            .size(6.dp)
                             .background(Color.Green, shape = CircleShape)
                             .border(1.dp, Color.Black, CircleShape)
                     ) {
@@ -630,7 +680,7 @@ class MainActivity : ComponentActivity() {
                     Box(
                         modifier = Modifier
                             .offset(xDp, yDp)
-                            .size(12.dp)
+                            .size(4.dp)
                             .background(Color.Red, shape = MaterialTheme.shapes.small)
                     )
                 }
@@ -649,7 +699,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
-                currentUserNode?.let { node ->
+                /*currentUserNode?.let { node ->
                     val xDp = with(density) { (node.position.x * scaleX).toDp() }
                     val yDp = with(density) { (node.position.y * scaleY).toDp() }
                     Icon(
@@ -661,7 +711,7 @@ class MainActivity : ComponentActivity() {
                             .size(24.dp)
                             .rotate(userOrientation)
                     )
-                }
+                }*/
 
                 // 7. PUNTOS DE INTERÉS (POIs)
                 pois.forEach { poi ->
@@ -671,61 +721,30 @@ class MainActivity : ComponentActivity() {
                         val yDp = with(density) { (nodoDelPoi.position.y * scaleY).toDp() }
                         val esDestino = (poi.nodoId == destinoSeleccionadoId || poi.nodoId == poiParaConfirmar?.nodoId)
 
-                        val tamanoCaja = if (esDestino) 36.dp else 24.dp
-                        val ajusteOffset = if (esDestino) 18.dp else 12.dp
-                        val colorFondo = if (esDestino) Color(0xFFD32F2F) else Color(0xFFFF9800)
+                        val estilo = obtenerEstiloPoi(poi.nombre)
+
+                        // 2. Tamaños un poco más grandes para que el icono vectorial se distinga bien
+                        val tamanoCaja = if (esDestino) 24.dp else 18.dp
+                        val ajusteOffset = tamanoCaja / 2
+
+                        val colorFondo = if (esDestino) Color(0xFFD32F2F) else estilo.color
 
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .offset(xDp - ajusteOffset, yDp - ajusteOffset)
                                 .size(tamanoCaja)
-                                .background(colorFondo, shape = RoundedCornerShape(8.dp))
-                                .border(if (esDestino) 3.dp else 2.dp, Color.White, RoundedCornerShape(8.dp))
+                                .background(colorFondo, shape = CircleShape)
+                                .border(if (esDestino) 2.dp else 1.dp, Color.White, CircleShape)
                                 .clickable { onPoiClick(poi) }
                         ) {
-                            Text("📍", fontSize = if (esDestino) 18.sp else 12.sp)
+                            Icon(
+                                imageVector = estilo.icono,
+                                contentDescription = poi.nombre,
+                                tint = Color.White, // Pintamos el icono de blanco para que contraste con el fondo de color
+                                modifier = Modifier.padding(3.dp) // Un pequeño margen para que el icono respire dentro del círculo
+                            )
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun ListSection(modifier: Modifier) {
-        Column(modifier = modifier) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                item {
-                    Text("Beacons Holy-IOT Detectados:",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color(0xFF0066CC)) // Color azul para diferenciar
-                }
-
-                // Aquí volvemos a filtrar por seguridad para la UI
-                val filteredDevices = devices.filter { knownBeacons.containsKey(it.device.address) }
-
-                items(filteredDevices) { result ->
-                    val macAddress = result.device.address
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "Holy-IOT (${macAddress.takeLast(5)})",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text(text = "${result.rssi} dBm",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                    Divider()
-                }
-
-                if (filteredDevices.isEmpty()) {
-                    item {
-                        Text("Buscando beacons conocidos...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray,
-                            modifier = Modifier.padding(8.dp))
                     }
                 }
             }
@@ -737,32 +756,40 @@ class MainActivity : ComponentActivity() {
             try {
                 mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
 
-                // Obtenemos la primera planta (Planta BajA) como planta activa por defecto
-                val plantaActivaPredeterminada = mapaDescargado?.plantas?.getOrNull(0)
-                Log.d("API_TFG", "Planta seleccionada: ${plantaActivaPredeterminada?.nombre}")
+                // 2. Protegemos el acceso con '?.let' para asegurarnos de que el mapa no es nulo
+                mapaDescargado?.let { mapa ->
+                    // Obtenemos la primera planta (Planta Baja) como planta activa por defecto
+                    val plantaActivaPredeterminada = mapa.plantas.getOrNull(0)
+                    Log.d("API_TFG", "Planta seleccionada: ${plantaActivaPredeterminada?.nombre}")
 
-                plantaActivaPredeterminada?.let { planta ->
-                    // Accedemos a los datos DENTRO de la planta
-                    knownBeacons = planta.knownBeacons
+                    // Ahora es seguro acceder a las dimensiones
+                    ancho = mapa.dimensiones.ancho
+                    largo = mapa.dimensiones.largo
 
-                    // NOTA: Para el dibujo del Canvas, solo dibujamos los nodos/pois de ESTA planta.
-                    // Pero para el buscador/ruta usamos las listas "todosLosPois" / "todosLosNodos" del Paso 1.
-                    nodes = planta.nodos
-                    pois = planta.pois
+                    plantaActivaPredeterminada?.let { planta ->
+                        // Accedemos a los datos DENTRO de la planta
+                        knownBeacons = planta.knownBeacons
 
-                    // Convertimos la imagen de ESTA planta
-                    planoFondo = base64ToImageBitmap(planta.imagenBase64)
+                        nodes = planta.nodos
+                        pois = planta.pois
+
+                        // Convertimos la imagen de ESTA planta
+                        planoFondo = base64ToImageBitmap(planta.imagenBase64)
+                    }
+
+                    val todosLosNodosDelEdificio = mapa.plantas.flatMap { it.nodos }
+                    todosLosPoisDelEdificio = mapa.plantas.flatMap { it.pois }
+
+                    // Inicializamos los motores
+                    engine = PositioningEngine(knownBeacons)
+                    graphEngine = GraphEngine(todosLosNodosDelEdificio)
+
+                    // Todo listo, quitamos la pantalla de carga
+                    isLoading = false
+
+                    // 3. Arreglado el texto del Log usando las variables reales
+                    Log.d("API_TFG", "¡Éxito! Nodos: ${nodes.size}, Ancho: $ancho m, Largo: $largo m")
                 }
-                val todosLosNodosDelEdificio = mapaDescargado!!.plantas.flatMap { it.nodos }
-                todosLosPoisDelEdificio = mapaDescargado!!.plantas.flatMap { it.pois }
-
-                // Inicializamos los motores
-                 engine = PositioningEngine(knownBeacons)
-                 graphEngine = GraphEngine(todosLosNodosDelEdificio)
-
-                // Todo listo, quitamos la pantalla de carga
-                isLoading = false
-                Log.d("API_TFG", "¡Éxito! Nodos: ${nodes.size}, Ancho: $10,7 m")
 
             } catch (e: Exception) {
                 Log.e("API_TFG", "Error al descargar los datos. Revisa la IP en BASE_URL.", e)
@@ -920,17 +947,21 @@ class MainActivity : ComponentActivity() {
 
                             if (snappedNode != null && snappedNode.id != currentUserNode?.id) {
 
-                                val nuevaRuta = graphEngine?.findPath(
-                                    snappedNode.id,
-                                    destinoSeleccionadoId
-                                )
+                                if (modoNavegacionActiva && origenSeleccionadoId == null && destinoSeleccionadoId != null) {
 
-                                if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
-                                    rutaCalculada = nuevaRuta
-                                    Log.d(TAG, "🔄 Ruta recalculada. Pasos: ${nuevaRuta.size}")
-                                } else {
-                                    rutaCalculada = emptyList()
-                                    Log.d(TAG, "✅ Has llegado al destino o no hay ruta.")
+                                    val nuevaRuta = graphEngine?.findPath(
+                                        snappedNode.id,
+                                        destinoSeleccionadoId!!
+                                    )
+
+                                    if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
+                                        rutaCalculada = nuevaRuta
+                                        Log.d(TAG, "🔄 Ruta recalculada. Pasos: ${nuevaRuta.size}")
+                                    } else {
+                                        // Si da error, es mejor no vaciar la ruta calculada de golpe,
+                                        // por si es solo un pequeño error de cobertura de 1 segundo.
+                                        Log.d(TAG, "✅ Has llegado al destino o no se pudo recalcular.")
+                                    }
                                 }
                             }
 
