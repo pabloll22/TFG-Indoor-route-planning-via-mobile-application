@@ -202,6 +202,11 @@ class MainActivity : ComponentActivity() {
             // 2. Obtenemos la instrucción actual (la primera de la lista de la ruta restante)
             val instruccionActual = todasLasInstrucciones.firstOrNull()
 
+            // Control de la simulación
+            var modoSimulacionActiva by remember { mutableStateOf(false) }
+            var pasoSimulacionActual by remember { mutableIntStateOf(0) }
+            var nodoSimuladoActual by remember { mutableStateOf<Node?>(null) }
+
             MaterialTheme {
                 val configuration = LocalConfiguration.current
                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -285,7 +290,7 @@ class MainActivity : ComponentActivity() {
                                             rutaCalculada = rutaParaDibujar,
                                             userPosition = userPosition,
                                             currentUserNode = currentUserNode,
-                                             //onNodeClick = { /* tu lógica de toque */ }
+                                            //onNodeClick = { /* tu lógica de toque */ }
                                             onPoiClick = { poiTocado:POI ->
                                                 poiParaConfirmar = poiTocado // Abre el popup
                                             }
@@ -301,11 +306,12 @@ class MainActivity : ComponentActivity() {
                                             planoFondo = planoFondo,
                                             rutaCalculada = rutaParaDibujar,
                                             userPosition = userPosition,
-                                            currentUserNode = currentUserNode,
+                                            currentUserNode = if (modoSimulacionActiva) nodoSimuladoActual else currentUserNode,
                                             userOrientation=userOrientation,
                                             onPoiClick = { poiTocado:POI ->
                                                 poiParaConfirmar = poiTocado // Abre el popup
                                             },
+                                            esSimulacion = modoSimulacionActiva,
                                         )
                                         // ListSection(Modifier.height(250.dp).fillMaxWidth())
                                     }
@@ -342,8 +348,8 @@ class MainActivity : ComponentActivity() {
                                 // =========================================================
                                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
 
-                                    if (!modoNavegacionActiva) {
-                                        // 1. MODO BÚSQUEDA: Solo mostramos el buscador si NO estamos navegando
+                                    if (!modoNavegacionActiva && !modoSimulacionActiva) {
+                                        // 1. MODO BÚSQUEDA: Solo mostramos el buscador si NO estamos navegando NI simulando
                                         BuscadorDestino(
                                             pois = mapaDescargado?.plantas?.flatMap { it.pois } ?: emptyList(),
                                             rutaActiva = rutaCalculada.isNotEmpty(),
@@ -360,10 +366,11 @@ class MainActivity : ComponentActivity() {
                                             }
                                         )
                                     } else {
-                                        // 2. MODO NAVEGACIÓN: Si estamos navegando, mostramos las instrucciones
-                                        // Solo si hay una instrucción válida que mostrar
-                                        val instruccionActual = remember(rutaCalculada) {
-                                            NavigationHelper.generateInstructions(rutaCalculada).firstOrNull()
+                                        // 2. MODO NAVEGACIÓN O SIMULACIÓN
+                                        val instruccionActual = if (modoSimulacionActiva) {
+                                            todasLasInstrucciones.getOrNull(pasoSimulacionActual)
+                                        } else {
+                                            todasLasInstrucciones.firstOrNull()
                                         }
 
                                         if (instruccionActual != null) {
@@ -454,6 +461,31 @@ class MainActivity : ComponentActivity() {
                                     poiDestinoActivo = mapaDescargado?.plantas?.flatMap { it.pois }?.find { it.nodoId == destinoSeleccionadoId },
                                     distanciaMetros = if (rutaCalculada.isNotEmpty()) graphEngine?.calcularDistanciaMetros(rutaCalculada) else 0,
 
+                                    modoSimulacionActiva = modoSimulacionActiva,
+                                    pasoActual = pasoSimulacionActual,
+                                    totalPasos = todasLasInstrucciones.size,
+                                    onSimularClick = { poi ->
+                                        destinoSeleccionadoId = poi.nodoId
+                                        modoSimulacionActiva = true
+                                        pasoSimulacionActual = 0
+                                        poiParaConfirmar = null // Cerramos la tarjeta de abajo
+
+                                        if (rutaCalculada.isEmpty()) {
+                                            val idInicio = origenSeleccionadoId ?: currentUserNode?.id
+                                            if (idInicio != null) {
+                                                rutaCalculada = graphEngine?.findPath(idInicio, poi.nodoId) ?: emptyList()
+                                            }
+                                        }
+                                    },
+                                    onAvanzarPaso = {
+                                        if (pasoSimulacionActual < todasLasInstrucciones.size - 1) pasoSimulacionActual++
+                                        nodoSimuladoActual = rutaCalculada.getOrNull(pasoSimulacionActual)
+                                    },
+                                    onRetrocederPaso = {
+                                        if (pasoSimulacionActual > 0) pasoSimulacionActual--
+                                        nodoSimuladoActual = rutaCalculada.getOrNull(pasoSimulacionActual)
+                                    },
+
                                     // "Detener Ruta"
                                     onDetenerRutaClick = {
                                         rutaCalculada = emptyList()
@@ -465,6 +497,8 @@ class MainActivity : ComponentActivity() {
                                         textoOrigenExterno=""
                                         plantaQueDebeParpadearId=null
                                         poiParaConfirmar = null
+                                        modoSimulacionActiva = false
+                                        nodoSimuladoActual = null
                                     },
 
                                     // "X" de la tarjeta
@@ -537,7 +571,8 @@ class MainActivity : ComponentActivity() {
         userPosition: PointMeters?,
         currentUserNode: Node?,
         userOrientation: Float = 0f,
-        onPoiClick: (POI) -> Unit
+        onPoiClick: (POI) -> Unit,
+        esSimulacion: Boolean = false
     ) {
         val density = LocalDensity.current
 
@@ -699,19 +734,20 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
-                /*currentUserNode?.let { node ->
+                currentUserNode?.let { node ->
                     val xDp = with(density) { (node.position.x * scaleX).toDp() }
                     val yDp = with(density) { (node.position.y * scaleY).toDp() }
+                    val colorNodo = if (esSimulacion) Color(0xFFFF5722) else Color.Magenta
                     Icon(
                         imageVector = Icons.Filled.Navigation,
                         contentDescription = null,
-                        tint = Color.Magenta,
+                        tint = colorNodo,
                         modifier = Modifier
-                            .offset(xDp - 12.dp, yDp - 12.dp)
-                            .size(24.dp)
+                            .offset(xDp - 4.dp, yDp - 4.dp)
+                            .size(8.dp)
                             .rotate(userOrientation)
                     )
-                }*/
+                }
 
                 // 7. PUNTOS DE INTERÉS (POIs)
                 pois.forEach { poi ->

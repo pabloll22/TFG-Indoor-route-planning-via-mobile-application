@@ -12,6 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -47,6 +51,12 @@ fun BoxScope.ControlesNavegacion(
     poiParaConfirmar: POI?,
     poiDestinoActivo: POI?,
     distanciaMetros: Int?,
+    modoSimulacionActiva: Boolean,
+    pasoActual: Int,
+    totalPasos: Int,
+    onSimularClick: (POI) -> Unit,
+    onAvanzarPaso: () -> Unit,
+    onRetrocederPaso: () -> Unit,
     onDetenerRutaClick: () -> Unit,
     onCerrarTarjetaClick: () -> Unit,
     onComoLlegarClick: (POI) -> Unit,
@@ -65,7 +75,7 @@ fun BoxScope.ControlesNavegacion(
     // NAVEGACIÓN ACTIVA
     // -----------------------------------------------------------------
     AnimatedVisibility(
-        visible = hayRutaActiva && poiDestinoActivo != null,
+        visible = (hayRutaActiva || modoSimulacionActiva) && poiDestinoActivo != null,
         modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
@@ -91,99 +101,90 @@ fun BoxScope.ControlesNavegacion(
                         maxLines = 2
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-
-                    // 1. Fila de la distancia
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Place,
-                            contentDescription = "Distancia",
-                            tint = Color(0xFF1E88E5),
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Default.Place, "Distancia", tint = Color(0xFF1E88E5), modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$distanciaMetros metros",
-                            color = Color(0xFF1E88E5),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        Text("$distanciaMetros metros", color = Color(0xFF1E88E5), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
-
                     Spacer(modifier = Modifier.height(2.dp))
-
-                    // 2. Fila del tiempo
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Schedule,
-                            contentDescription = "Tiempo estimado",
-                            tint = Color(0xFF1E88E5),
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Default.Schedule, "Tiempo estimado", tint = Color(0xFF1E88E5), modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = textoTiempo,
-                            color = Color(0xFF1E88E5),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        Text(textoTiempo, color = Color(0xFF1E88E5), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // ZONA DE BOTONES
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // ZONA DE BOTONES (FLECHAS O INICIAR/SIMULAR)
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp) //
+                ) {
 
-                    // BOTÓN VERDE "INICIAR"
-                    // Solo sale si NO estamos navegando y SI el origen es nuestra ubicación
-                    if (!modoNavegacionActiva && !esVistaPrevia) {
+                    // MODO SIMULACIÓN -> Flechas
+                    if (modoSimulacionActiva) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onRetrocederPaso, enabled = pasoActual > 0) {
+                                Icon(Icons.Default.ArrowBackIosNew, "Anterior", tint = if (pasoActual > 0) Color(0xFF1E88E5) else Color.LightGray)
+                            }
+                            Text(
+                                text = "${pasoActual + 1} / ${if (totalPasos > 0) totalPasos else 1}",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                            IconButton(onClick = onAvanzarPaso, enabled = pasoActual < totalPasos - 1) {
+                                Icon(Icons.Default.ArrowForwardIos, "Siguiente", tint = if (pasoActual < totalPasos - 1) Color(0xFF1E88E5) else Color.LightGray)
+                            }
+                        }
+                    } else if (!modoNavegacionActiva && !esVistaPrevia) {
                         Button(
                             onClick = {
                                 if (origenEsUbicacionUsuario) onIniciarRutaClick(poiDestinoActivo!!)
+                                else onSimularClick(poiDestinoActivo!!)
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color.LightGray
+                                containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color(0xFF1E88E5)
                             ),
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Iniciar",
-                                tint = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
+                                imageVector = if (origenEsUbicacionUsuario) Icons.Default.PlayArrow else Icons.Default.FastForward,
+                                contentDescription = null,
+                                tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "Iniciar",
+                                text = if (origenEsUbicacionUsuario) "Iniciar" else "Simular",
                                 fontWeight = FontWeight.Bold,
-                                color = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray
+                                color = Color.White
                             )
                         }
-
-                        Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    // BOTÓN "LIMPIAR / DETENER"
+                    // BOTÓN DETENER
                     Button(
                         onClick = onDetenerRutaClick,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (modoNavegacionActiva) Color(0xFFD32F2F) else Color.DarkGray
+                            containerColor = if (modoNavegacionActiva || modoSimulacionActiva) Color(0xFFD32F2F) else Color.DarkGray
                         ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                     ) {
                         Icon(
-                            imageVector = if (modoNavegacionActiva) Icons.Default.Close else Icons.Default.Delete,
+                            imageVector = if (modoNavegacionActiva || modoSimulacionActiva) Icons.Default.Close else Icons.Default.Delete,
                             contentDescription = "Detener",
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
-                        if (modoNavegacionActiva || esVistaPrevia) {
+                        if (modoNavegacionActiva || modoSimulacionActiva || esVistaPrevia) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (modoNavegacionActiva) "Detener" else "Limpiar",
-                                fontWeight = FontWeight.Bold
+                                text = if (modoNavegacionActiva || modoSimulacionActiva) "Detener" else "Limpiar",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }
@@ -284,28 +285,29 @@ fun BoxScope.ControlesNavegacion(
                         )
                     }
 
-                    // BOTÓN 2: INICIAR
+                    // BOTÓN 2: INICIAR / SIMULAR (En el ModalBottomSheet)
                     Button(
                         onClick = {
                             if (origenEsUbicacionUsuario) onIniciarRutaClick(poi)
+                            else onSimularClick(poi) // Lanzamos simulación
                         },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color.LightGray
+                            containerColor = if (origenEsUbicacionUsuario) Color(0xFF4CAF50) else Color(0xFF1E88E5)
                         ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PlayArrow,
+                            imageVector = if (origenEsUbicacionUsuario) Icons.Default.PlayArrow else Icons.Default.FastForward,
                             contentDescription = null,
-                            tint = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
+                            tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Iniciar",
-                            color = if (origenEsUbicacionUsuario) Color.White else Color.DarkGray,
+                            text = if (origenEsUbicacionUsuario) "Iniciar" else "Simular",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )

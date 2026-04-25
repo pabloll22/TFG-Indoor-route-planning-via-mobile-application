@@ -18,6 +18,7 @@ interface MapApiService {
     suspend fun getMapa(@Path("mapa_id") id: String): Mapa
 
     companion object {
+        /*const val BASE_URL = "http://172.16.142.119:3000"*/
         const val BASE_URL = "http://192.168.1.49:3000/"
     }
 }
