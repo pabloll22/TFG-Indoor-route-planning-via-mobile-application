@@ -23,22 +23,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Accessible
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Accessible
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.BookmarkRemove
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.setValue
@@ -49,7 +40,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -206,6 +196,19 @@ class MainActivity : ComponentActivity() {
             var modoSimulacionActiva by remember { mutableStateOf(false) }
             var pasoSimulacionActual by remember { mutableIntStateOf(0) }
             var nodoSimuladoActual by remember { mutableStateOf<Node?>(null) }
+
+            LaunchedEffect(nodoSimuladoActual) {
+                val plantaDelNodo = nodoSimuladoActual?.plantaId
+
+                // Si el nodo simulado existe y está en una planta distinta a la actual
+                if (plantaDelNodo != null && plantaDelNodo != plantaActivaId) {
+                    // 1. Cambiamos la variable visual del botón iluminado
+                    plantaActivaId = plantaDelNodo
+
+                    // 2. Ejecutamos tu función para cambiar la imagen y los nodos
+                    cambiarDePlanta(plantaDelNodo)
+                }
+            }
 
             MaterialTheme {
                 val configuration = LocalConfiguration.current
@@ -817,7 +820,7 @@ class MainActivity : ComponentActivity() {
                     todosLosPoisDelEdificio = mapa.plantas.flatMap { it.pois }
 
                     // Inicializamos los motores
-                    engine = PositioningEngine(knownBeacons)
+                    engine = PositioningEngine(knownBeacons, ancho, largo)
                     graphEngine = GraphEngine(todosLosNodosDelEdificio)
 
                     // Todo listo, quitamos la pantalla de carga
@@ -856,7 +859,7 @@ class MainActivity : ComponentActivity() {
             //rutaCalculada = emptyList()
 
             // IMPORTANTE: El motor de posicionamiento SÍ se reinicia con los beacons de esta planta
-            engine = PositioningEngine(knownBeacons)
+            engine = PositioningEngine(knownBeacons, ancho, largo)
             plantaActivaId=planta.plantaId
             //graphEngine = GraphEngine(nodes)
 

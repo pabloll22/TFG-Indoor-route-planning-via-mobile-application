@@ -88,6 +88,29 @@ object NavigationHelper {
                 instructions.add(NavInstruction("Llegarás a tu destino: ${next.name}", Icons.Default.LocationOn, dist))
             }
         }
-        return instructions
+
+        val finalInstructions = instructions.toMutableList()
+        var accumulatedDistance = 0
+
+        for (i in finalInstructions.indices.reversed()) {
+            val inst = finalInstructions[i]
+
+            if (inst.icon != Icons.Default.Straight) {
+                // Si hay un giro, escaleras o destino, reseteamos el acumulador
+                // guardando solo la distancia de este tramo antes del giro.
+                accumulatedDistance = inst.distance
+            } else {
+                // Si es un nodo recto, sumamos su distancia a la mochila del pasillo
+                accumulatedDistance += inst.distance
+
+                // Actualizamos la instrucción para que muestre la cuenta atrás sumada
+                finalInstructions[i] = NavInstruction(
+                    text = "Continúa recto por el pasillo durante ${accumulatedDistance}m",
+                    icon = inst.icon,
+                    distance = accumulatedDistance
+                )
+            }
+        }
+        return finalInstructions
     }
 }

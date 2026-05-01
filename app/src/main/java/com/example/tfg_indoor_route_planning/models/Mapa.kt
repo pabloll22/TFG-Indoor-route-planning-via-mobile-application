@@ -6,7 +6,9 @@ import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.LocalLibrary
+import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PedalBike
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SettingsInputComponent
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Wc
+import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -34,6 +37,10 @@ fun obtenerEstiloPoi(nombre: String): EstiloPoi {
     val n = nombre.lowercase()
     return when {
         n.contains("aseo") || n.contains("baño") -> EstiloPoi(Icons.Default.Wc, Color(0xFF2196F3)) // Azul
+        n.contains("cafetería") || n.contains("cafeteria") || n.contains("bar") -> EstiloPoi(Icons.Default.LocalCafe, Color(0xFF795548)) // Marrón
+        n.contains("coches") || n.contains("parking") || n.contains("coche") -> EstiloPoi(Icons.Default.LocalParking, Color(0xFF3F51B5)) // Índigo
+        n.contains("descanso") -> EstiloPoi(Icons.Default.Weekend, Color(0xFFFFC107)) // Ámbar
+        n.contains("estudio")  -> EstiloPoi(Icons.Default.LocalLibrary, Color(0xFF03A9F4)) // Celeste
         n.contains("clase") || n.contains("aula") -> EstiloPoi(Icons.Default.School, Color(0xFF4CAF50)) // Verde
         n.contains("consejería") || n.contains("conserje") -> EstiloPoi(Icons.Default.Info, Color(0xFFFF9800)) // Naranja
         n.contains("secretaría") -> EstiloPoi(Icons.Default.BusinessCenter, Color(0xFF9C27B0)) // Morado

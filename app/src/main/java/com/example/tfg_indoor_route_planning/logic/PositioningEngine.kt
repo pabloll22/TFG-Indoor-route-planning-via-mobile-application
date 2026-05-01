@@ -1,15 +1,17 @@
 package com.example.tfg_indoor_route_planning.logic
 
-import android.bluetooth.le.ScanResult
 import android.util.Log
 import com.example.tfg_indoor_route_planning.MainActivity
 import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.PointMeters
-import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-class PositioningEngine(private val knownBeacons: Map<String, PointMeters>) {
+class PositioningEngine(
+    private val knownBeacons: Map<String, PointMeters>,
+    private val ancho: Float,
+    private val largo: Float
+) {
 
     /**
      * Calcula la posición del usuario basándose en los beacons detectados.
@@ -40,6 +42,7 @@ class PositioningEngine(private val knownBeacons: Map<String, PointMeters>) {
 
         //2. TRILATERACIÓN (solo con 3 mejores)
         val trilateration = tryTrilateration(beaconData)
+        if (trilateration == null) {Log.d("TRILATERIZACION", "ES NULL")}
 
         //3. FUSIÓN (70% centroid, 30% trilateración)
         val fused = if (trilateration != null) {
@@ -51,7 +54,7 @@ class PositioningEngine(private val knownBeacons: Map<String, PointMeters>) {
             centroid
         }
 
-        return fused
+        return centroid
     }
 
     /**
@@ -92,8 +95,8 @@ class PositioningEngine(private val knownBeacons: Map<String, PointMeters>) {
 
         //validación (dentro del mapa)
         return if (result != null &&
-            result.x in 0f..12f &&
-            result.y in 0f..11f
+            result.x in 0.0f..ancho &&
+            result.y in 0.0f..largo
         ) result else null
     }
 }
