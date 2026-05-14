@@ -27,7 +27,13 @@ data class POI(
     val id: String,
     val nombre: String,
     val nodoId: String,
-    val plantaId: String
+    val plantaId: String,
+    val tipo: String? = "OTRO",
+    val horario: String? = null,
+    val telefono: String? = null,
+    val esAccesible: Boolean? = null,
+    val enlaceExtra: String? = null,
+    val capacidad: Int? = null
 )
 
 data class EstiloPoi(val icono: ImageVector, val color: Color)
@@ -65,5 +71,6 @@ data class Mapa (
     val mapaId: String,
     val nombre: String,
     val dimensiones: Dimensiones,
-    val plantas: List<Planta>
+    val plantas: List<Planta>,
+    val urlWeb: String,
 )

@@ -10,8 +10,10 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.util.Base64
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,9 +29,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.setValue
@@ -50,8 +56,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.tfg_indoor_route_planning.api.FavoritosRequest
 import com.example.tfg_indoor_route_planning.api.MapApiService
+import com.example.tfg_indoor_route_planning.api.MapaResumen
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.CompassEngine
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
@@ -72,6 +81,7 @@ import com.example.tfg_indoor_route_planning.ui.PantallaListaFacultades
 import com.example.tfg_indoor_route_planning.ui.SelectorDePlantas
 import com.example.tfg_indoor_route_planning.web_scrapping.PantallaExplorarSheet
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -88,7 +98,7 @@ class MainActivity : ComponentActivity() {
     private val devices = mutableStateListOf<ScanResult>()
     private var scanner: BluetoothLeScanner? = null
 
-    // --- NUEVO: ESTADO PARA LA POSICIÓN CALCULADA ---
+    // ESTADO PARA LA POSICIÓN CALCULADA
     private var userPosition by mutableStateOf<PointMeters?>(null)
     // 1. VARIABLE DE CONTROL DE TIEMPO
     private var lastCalculationTime = 0L
@@ -111,7 +121,7 @@ class MainActivity : ComponentActivity() {
     private var rutaCalculada by mutableStateOf<List<Node>>(emptyList())
     private var destinoSeleccionadoId by mutableStateOf<String?>(null)
     // Variables de estado para la lista principal
-    private var listaMapas by mutableStateOf<List<MapApiService.MapaResumen>>(emptyList())
+    private var listaMapas by mutableStateOf<List<MapaResumen>>(emptyList())
     private var cargandoLista by mutableStateOf(true) // Pantalla de carga inicial
     private var mapaAbiertoId by mutableStateOf<String?>(null)
     private var poiParaConfirmar by mutableStateOf<POI?>(null)
@@ -131,6 +141,11 @@ class MainActivity : ComponentActivity() {
 
     private var modoNavegacionActiva by  mutableStateOf(false)
     private var origenSeleccionadoId by mutableStateOf<String?>(null)
+    private var aulaVipPendiente: String? = null
+    private var urlWeb: String = "https://www.uma.es/"
+
+    private var tts: TextToSpeech? = null
+    private var isTtsReady = false
 
     @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
@@ -143,6 +158,43 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
+
+        // 1. RECOGEMOS LOS DATOS DEL INTENT (Si venimos del Horario)
+        aulaVipPendiente = intent.getStringExtra("AULA_DESTINO_ID")
+        val facultadVipId = intent.getStringExtra("FACULTAD_DESTINO_ID")
+
+        if (facultadVipId != null) {
+            // Como ahora SÍ tiene la facultad "2", se saltará la lista de facultades,
+            // pondrá el mapa en modo carga e iniciará la descarga del edificio ETSI.
+            mapaAbiertoId = facultadVipId
+            isLoading = true
+            cargarDatosDesdeServidor(facultadVipId)
+        }
+
+        val modoSeleccionAula = intent.getBooleanExtra("MODO_SELECCION_AULA", false)
+        val facultadId = intent.getStringExtra("FACULTAD_ID") ?: "1"
+
+        if (modoSeleccionAula) {
+            mapaAbiertoId = facultadId
+            isLoading = true
+            cargarDatosDesdeServidor("2")
+        }
+
+        // INICIALIZAR EL MOTOR DE VOZ
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                // Configuramos el idioma a Español
+                val result = tts?.setLanguage(Locale("es", "ES"))
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e("VOZ", "El idioma Español no está soportado en este dispositivo")
+                } else {
+                    isTtsReady = true
+                }
+            } else {
+                Log.e("VOZ", "Fallo al inicializar TextToSpeech")
+            }
+        }
+
         // Lanzamos la descarga nada más abrir la app
         setContent {
             //var plantaActivaId by remember { mutableStateOf<String?>(null) }
@@ -156,12 +208,58 @@ class MainActivity : ComponentActivity() {
 
             var mostrarHojaExplorar by remember { mutableStateOf(false) }
 
-            // Función para añadir/quitar de favoritos
-            val toggleFavorito: (String) -> Unit = { id ->
-                listaFavoritosIds = if (listaFavoritosIds.contains(id)) {
-                    listaFavoritosIds - id
+            var vozActivada by remember { mutableStateOf(true) }
+
+            LaunchedEffect(Unit) {
+                if (!UserSession.esInvitado) {
+                    val idUsuarioActual = UserSession.usuarioId
+                    try {
+                        val usuario = RetrofitClient.apiService.getUsuario(idUsuarioActual)
+                        // Convertimos la List del servidor al Set que usa la interfaz
+                        listaFavoritosIds = usuario.poisFavoritos.toSet()
+                        Log.d("FAVORITOS", "Cargados ${listaFavoritosIds.size} favoritos de la base de datos")
+                    } catch (e: Exception) {
+                        Log.e("FAVORITOS", "Error al cargar favoritos iniciales", e)
+                    }
                 } else {
-                    listaFavoritosIds + id
+                    Log.d("FAVORITOS", "Usuario invitado: no se cargan favoritos de la base de datos.")
+                }
+            }
+
+            // Función para añadir/quitar de favoritos
+            val toggleFavorito: (String) -> Unit = { idPoi ->
+                if (UserSession.esInvitado) {
+                    Toast.makeText(this@MainActivity, "Regístrate para guardar favoritos", Toast.LENGTH_SHORT).show()
+                }else{
+                    // 1. Calculamos la nueva lista en memoria
+                    val nuevaLista = if (listaFavoritosIds.contains(idPoi)) {
+                        listaFavoritosIds - idPoi
+                    } else {
+                        listaFavoritosIds + idPoi
+                    }
+
+                    // 2. Actualizamos la UI inmediatamente
+                    listaFavoritosIds = nuevaLista
+
+                    // 3. Enviamos la lista actualizada a la base de datos en segundo plano
+                    val idUsuarioActual = UserSession.usuarioId
+
+                    lifecycleScope.launch {
+                        try {
+                            // Convertimos el Set a List para enviarlo por Retrofit
+                            val request =
+                                FavoritosRequest(favoritos = nuevaLista.toList())
+                            val response = RetrofitClient.apiService.actualizarFavoritos(idUsuarioActual, request)
+
+                            if (!response.isSuccessful) {
+                                Log.e("FAVORITOS", "Error al guardar en BD: ${response.code()}")
+                            } else {
+                                Log.d("FAVORITOS", "Favoritos sincronizados correctamente con MongoDB")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("FAVORITOS", "Excepción al guardar favoritos", e)
+                        }
+                    }
                 }
             }
 
@@ -226,6 +324,36 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                LaunchedEffect(isLoading) {
+                    // Si ya no está cargando, tenemos un aula pendiente, y el mapa está listo
+                    if (!isLoading && aulaVipPendiente != null && mapaDescargado != null) {
+
+                        // Buscamos el POI en TODAS las plantas del edificio
+                        val poiVip = todosLosPoisDelEdificio.find {
+                            it.nodoId == aulaVipPendiente || it.nombre == aulaVipPendiente
+                        }
+
+                        if (poiVip != null) {
+                            // Averiguamos en qué planta está
+                            val plantaDelPoi = mapaDescargado!!.plantas.find { p ->
+                                p.pois.any { it.nodoId == poiVip.nodoId }
+                            }
+
+                            if (plantaDelPoi != null) {
+                                // Si está en otra planta distinta a la baja, cambiamos
+                                if (plantaActivaId != plantaDelPoi.plantaId) {
+                                    plantaActivaId = plantaDelPoi.plantaId
+                                    cambiarDePlanta(plantaDelPoi.plantaId)
+                                }
+
+                                // Abrimos la tarjeta de destino.
+                                poiParaConfirmar = poiVip
+                            }
+                        }
+                        aulaVipPendiente = null
+                    }
+                }
+
                 Surface(modifier = Modifier.fillMaxSize()) {
 
                     // =========================================================
@@ -243,6 +371,9 @@ class MainActivity : ComponentActivity() {
                                     isLoading = true
                                     mapaAbiertoId = idSeleccionado
                                     cargarDatosDesdeServidor(idSeleccionado) // Inicia descarga pesada
+                                },
+                                onBackClick = {
+                                    finish() // Cerramos el mapa
                                 }
                             )
                         }
@@ -281,9 +412,6 @@ class MainActivity : ComponentActivity() {
 
                             // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
                             Box(modifier = Modifier.fillMaxSize()) {
-                                // -----------------------------------------------------
-                                // AQUÍ EMPIEZA TU CÓDIGO ORIGINAL DE LANDSCAPE/PORTRAIT
-                                // -----------------------------------------------------
                                 if (isLandscape) {
                                     Row(Modifier.padding(16.dp)) {
                                         MapSection(
@@ -376,6 +504,12 @@ class MainActivity : ComponentActivity() {
                                             todasLasInstrucciones.firstOrNull()
                                         }
 
+                                        LaunchedEffect(instruccionActual) {
+                                            if (instruccionActual != null && vozActivada) {
+                                                hablar(instruccionActual.text)
+                                            }
+                                        }
+
                                         if (instruccionActual != null) {
                                             NavigationBanner(instruccionActual)
                                         }
@@ -387,9 +521,9 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         .fillMaxWidth() // Ocupa todo el ancho
-                                        .height(80.dp), // Altura estándar de barras de navegación
+                                        .height(80.dp),
                                     color = Color.White,
-                                    tonalElevation = 8.dp, // Crea una sutil sombra sobre el mapa
+                                    tonalElevation = 8.dp,
                                     shadowElevation = 16.dp
                                 ) {
                                     Row(
@@ -402,7 +536,7 @@ class MainActivity : ComponentActivity() {
                                         NavigationItem(
                                             icon = Icons.Default.Explore,
                                             label = "Explorar",
-                                            color = Color(0xFF1E88E5), // Azul Google
+                                            color = Color(0xFF1E88E5),
                                             onClick = { mostrarHojaExplorar = true }
                                         )
 
@@ -438,7 +572,7 @@ class MainActivity : ComponentActivity() {
                                 if (mostrarHojaGuardados) {
                                     HojaGuardadosBottomSheet(
                                         listaFavoritosIds = listaFavoritosIds,
-                                        todosLosPoisDelEdificio = todosLosPoisDelEdificio, // o tu lista global
+                                        todosLosPoisDelEdificio = todosLosPoisDelEdificio,
                                         onDismiss = { mostrarHojaGuardados = false },
                                         onToggleFavorito = { id -> toggleFavorito(id) },
                                         onNavigateClick = { poi ->
@@ -452,8 +586,30 @@ class MainActivity : ComponentActivity() {
 
                                 if (mostrarHojaExplorar) {
                                     PantallaExplorarSheet(
+                                        urlFacultad = urlWeb,
                                         onDismiss = { mostrarHojaExplorar = false }
                                     )
+                                }
+
+                                if (modoNavegacionActiva || modoSimulacionActiva) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 150.dp, end = 16.dp)
+                                    ) {
+                                        FloatingActionButton(
+                                            onClick = { vozActivada = !vozActivada },
+                                            containerColor = Color.White,
+                                            contentColor = if (vozActivada) Color(0xFF1E88E5) else Color.Gray,
+                                            modifier = Modifier.size(48.dp),
+                                            elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (vozActivada) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                                contentDescription = if (vozActivada) "Desactivar voz" else "Activar voz"
+                                            )
+                                        }
+                                    }
                                 }
 
                                 ControlesNavegacion(
@@ -526,7 +682,7 @@ class MainActivity : ComponentActivity() {
                                             val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
 
-                                            // IMPORTANTE: Lo mantenemos en falso para que NO salga el banner de "Gira a la derecha"
+                                            // Lo mantenemos en falso para que NO salga el banner
                                             modoNavegacionActiva = false
                                         }
                                         poiParaConfirmar = null
@@ -543,16 +699,16 @@ class MainActivity : ComponentActivity() {
                                             val nuevaRuta = graphEngine?.findPath(idInicio, destinoSeleccionadoId!!)
                                             rutaCalculada = nuevaRuta ?: emptyList()
 
-                                            // IMPORTANTE: Aquí SÍ activamos el banner superior y quitamos el buscador
+                                            // Aquí SÍ activamos el banner superior y quitamos el buscador
                                             modoNavegacionActiva = true
 
-                                            // Opcional: cerramos la tarjeta de abajo automáticamente para dejar el mapa limpio
                                             poiParaConfirmar = null
                                         }
                                     },
                                     listaFavoritosIds = listaFavoritosIds,
                                     toggleFavorito = toggleFavorito,
-                                    origenEsUbicacionUsuario = origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id
+                                    origenEsUbicacionUsuario = origenSeleccionadoId == null || origenSeleccionadoId == currentUserNode?.id,
+                                    modoSeleccionAula = modoSeleccionAula
                                 )
                             }
                         }
@@ -562,6 +718,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun hablar(texto: String) {
+        if (isTtsReady) {
+            tts?.speak(texto, TextToSpeech.QUEUE_FLUSH, null, null)
+        }
+    }
 
 
     @SuppressLint("UnusedBoxWithConstraintsScope")
@@ -579,7 +740,7 @@ class MainActivity : ComponentActivity() {
     ) {
         val density = LocalDensity.current
 
-        // --- NUEVO: ESTADOS PARA EL ZOOM Y DESPLAZAMIENTO ---
+        // ESTADOS PARA EL ZOOM Y DESPLAZAMIENTO
         var scale by remember { mutableStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }
 
@@ -626,7 +787,7 @@ class MainActivity : ComponentActivity() {
             val scaleX = constraints.maxWidth.toFloat() / ancho
             val scaleY = constraints.maxHeight.toFloat() / largo
 
-            // --- NUEVO: CONTENEDOR QUE APLICA EL ZOOM Y MOVIMIENTO ---
+            // CONTENEDOR QUE APLICA EL ZOOM Y MOVIMIENTO
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -682,7 +843,7 @@ class MainActivity : ComponentActivity() {
                                         strokeWidth = 4f
                                     )
                                 } else {
-                                    Log.e("Grafo_Debug", "El nodo ${nodo.id} apunta a un vecino que no existe: $idVecino")
+                                    //Log.e("Grafo_Debug", "El nodo ${nodo.id} apunta a un vecino que no existe: $idVecino")
                                 }
                             }
 
@@ -804,6 +965,7 @@ class MainActivity : ComponentActivity() {
                     // Ahora es seguro acceder a las dimensiones
                     ancho = mapa.dimensiones.ancho
                     largo = mapa.dimensiones.largo
+                    urlWeb = mapa.urlWeb
 
                     plantaActivaPredeterminada?.let { planta ->
                         // Accedemos a los datos DENTRO de la planta
@@ -849,14 +1011,16 @@ class MainActivity : ComponentActivity() {
             // Cambiamos la imagen de fondo
             planoFondo = base64ToImageBitmap(planta.imagenBase64)
 
-            // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
-            devices.clear()                  // Borramos los beacons de la planta anterior
-            //currentSmoothedPosition = null   // Reiniciamos el filtro EMA
-            //lastDrawnPosition = null         // Reiniciamos el umbral de movimiento
+            devices.clear()
+            currentSmoothedPosition = null
+            lastDrawnPosition = null
 
-            //userPosition = null              // Quitamos el punto azul del Canvas
-            //currentUserNode = null           // Olvidamos en qué nodo estábamos
-            //rutaCalculada = emptyList()
+            // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
+            if (rutaCalculada.isEmpty()) {
+
+                currentUserNode = null
+                userPosition = null
+            }
 
             // IMPORTANTE: El motor de posicionamiento SÍ se reinicia con los beacons de esta planta
             engine = PositioningEngine(knownBeacons, ancho, largo)
@@ -877,7 +1041,7 @@ class MainActivity : ComponentActivity() {
         if (hasBlePermissions()) startScan() else permissionLauncher.launch(permissions.toTypedArray())
     }
 
-    // --- CÓDIGO ACTUALIZADO: SCAN CALLBACK ---
+    // --- CÓDIGO SCAN CALLBACK ---
     private val scanCallback = object : ScanCallback() {
         @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -1074,5 +1238,33 @@ class MainActivity : ComponentActivity() {
             Log.e("API_TFG", "Error decodificando la imagen Base64", e)
             null
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        // Apagar motor de voz para liberar memoria
+        tts?.stop()
+        tts?.shutdown()
+
+        // 1. Detenemos el escáner Bluetooth para no drenar la batería
+        try {
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.BLUETOOTH_SCAN
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                scanner?.stopScan(scanCallback)
+                Log.d(TAG, "🛑 Escáner BLE detenido correctamente al salir del mapa.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al detener el escáner: ${e.message}")
+        }
+
+        // 2. Limpiamos las listas pesadas de la memoria
+        devices.clear()
+        activeBeacons.clear()
+
+        Log.d(TAG, "🧹 MainActivity destruida y memoria liberada.")
     }
 }

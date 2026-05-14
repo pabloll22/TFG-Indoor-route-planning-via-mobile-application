@@ -63,9 +63,13 @@ class GraphEngine(private val nodesList: List<Node>) {
             val distToCurrent = calculateDistance(rawPosition, current.position)
             val distToBest = calculateDistance(rawPosition, bestCandidate.position)
 
+            //Si el mejor candidato está en la planta que estamos viendo,
+            // y nosotros venimos de otra planta, forzamos el salto sin esperar.
+            val esSaltoDePlanta = (bestCandidate.plantaId == plantaActualId) && (current.plantaId != plantaActualId)
+
             // Solo cambiamos si la mejora es sustancial (supera el umbral)
             // O si la distancia es muy grande (salvavidas por si el usuario corrió)
-            if (distToBest < (distToCurrent - HYSTERESIS_THRESHOLD)) {
+            if (esSaltoDePlanta || distToBest < (distToCurrent - HYSTERESIS_THRESHOLD)) {
                 currentUserNode = bestCandidate
             }
         }
@@ -100,7 +104,6 @@ class GraphEngine(private val nodesList: List<Node>) {
         while (openSet.isNotEmpty()) {
             val current = openSet.poll() ?: break
 
-            // ¡Hemos llegado al destino!
             if (current.id == targetId) {
                 return reconstructPath(current)
             }
@@ -132,8 +135,6 @@ class GraphEngine(private val nodesList: List<Node>) {
         // Si la cola se vacía y no hemos devuelto la ruta, es que no hay camino posible
         return emptyList()
     }
-
-    // --- FUNCIONES AUXILIARES MATEMÁTICAS ---
 
     // Reconstruye el camino yendo hacia atrás desde el destino hasta el inicio
     private fun reconstructPath(endNode: Node): List<Node> {

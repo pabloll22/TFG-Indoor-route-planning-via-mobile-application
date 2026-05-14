@@ -7,9 +7,9 @@ data class NoticiaUma(
     val link: String?
 )
 
-data class EventoUma(
+data class DestacadoUma(
     val titulo: String,
-    val fecha: String,
     val descripcion: String,
+    val imageUrl: String?,
     val link: String?
 )

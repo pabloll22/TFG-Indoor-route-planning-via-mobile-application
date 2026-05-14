@@ -26,8 +26,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Newspaper
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,47 +65,57 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Campaign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PantallaExplorarSheet(onDismiss: () -> Unit) {
+fun PantallaExplorarSheet(
+    urlFacultad: String, // <--- ¡NUEVO INPUT AQUÍ!
+    onDismiss: () -> Unit
+) {
     val context = LocalContext.current
 
     // --- ESTADOS ---
     var noticias by remember { mutableStateOf<List<NoticiaUma>>(emptyList()) }
-    var eventos by remember { mutableStateOf<List<EventoUma>>(emptyList()) }
+    var destacados by remember { mutableStateOf<List<DestacadoUma>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var mensajeError by remember { mutableStateOf<String?>(null) }
 
-    // Ahora tenemos 3 pestañas: 0 (Noticias), 1 (Eventos), 2 (Estadísticas)
     var pestanaActiva by remember { mutableIntStateOf(0) }
 
     // --- LÓGICA DE CARGA (Scraping) ---
-    LaunchedEffect(Unit) {
+    // Reactivamos el bloque si cambia la urlFacultad
+    LaunchedEffect(urlFacultad) {
+        if (urlFacultad.isEmpty()) {
+            cargando = false
+            mensajeError = "No hay URL disponible para esta facultad."
+            return@LaunchedEffect
+        }
+
         withContext(Dispatchers.IO) {
             try {
-                // Scraping Noticias (Portada)
-                val docNoticias = Jsoup.connect("https://www.uma.es/etsi-informatica/").get()
-                noticias = docNoticias.select("#noticias-carousel .item").map { el ->
-                    val href = el.select("a").first()?.attr("href") ?: ""
+                // Jsoup se conecta dinámicamente a la URL de la facultad seleccionada
+                val docPortada = Jsoup.connect(urlFacultad).get()
+
+                // Scraping Noticias
+                noticias = docPortada.select("#noticias-carousel .item").map { el ->
                     NoticiaUma(
                         titulo = el.select("h3, h4, strong").first()?.text() ?: "Noticia",
                         descripcion = el.select("p").first()?.text() ?: "",
                         imageUrl = el.select("img").first()?.attr("abs:src"),
-                        link = if (href.isNotEmpty()) "https://www.uma.es$href" else null
+                        // abs:href obtiene automáticamente la ruta completa sea cual sea la facultad
+                        link = el.select("a").first()?.attr("abs:href")?.takeIf { it.isNotEmpty() }
                     )
                 }
 
-                // Scraping Eventos (URL específica)
-                val docEventos = Jsoup.connect("https://www.uma.es/etsi-informatica/cms/base/ver/collection/collection/148025/eventos-etsi-informatica/").get()
-                eventos = docEventos.select("li.itemCollection").map { el ->
-                    val aTag = el.select(".itemCollectionTitle a").first()
-                    val href = aTag?.attr("href") ?: ""
-                    EventoUma(
-                        titulo = aTag?.text() ?: "Evento",
-                        fecha = el.select(".itemCollectionField-creation_date .itemCollectionFieldValue").text().trim(),
-                        descripcion = el.select(".itemCollectionField-description").text().trim(),
-                        link = if (href.isNotEmpty()) "https://www.uma.es$href" else null
+                // Scraping Destacados
+                destacados = docPortada.select("#destacados-carousel .item").map { el ->
+                    DestacadoUma(
+                        titulo = el.select("h4").text().ifEmpty { "Destacado" },
+                        descripcion = el.select("p").text(),
+                        imageUrl = el.select("img").first()?.attr("abs:src"),
+                        link = el.select("a").first()?.attr("abs:href")?.takeIf { it.isNotEmpty() }
                     )
                 }
             } catch (e: Exception) {
@@ -141,8 +151,8 @@ fun PantallaExplorarSheet(onDismiss: () -> Unit) {
                 Tab(
                     selected = pestanaActiva == 1,
                     onClick = { pestanaActiva = 1 },
-                    text = { Text("Eventos") },
-                    icon = { Icon(Icons.Default.Event, null) }
+                    text = { Text("Destacados") },
+                    icon = { Icon(Icons.Default.Campaign, null) }
                 )
                 Tab(
                     selected = pestanaActiva == 2,
@@ -156,15 +166,15 @@ fun PantallaExplorarSheet(onDismiss: () -> Unit) {
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 when (pestanaActiva) {
                     0 -> ListadoNoticias(noticias, cargando, mensajeError, context)
-                    1 -> ListadoEventos(eventos, cargando, mensajeError, context)
-                    2 -> PantallaPowerBI() // <--- Nueva pestaña de Power BI
+                    1 -> ListadoDestacados(destacados, cargando, mensajeError, context)
+                    2 -> PantallaPowerBI() // Pestaña de Power BI
                 }
             }
         }
     }
 }
 
-// --- SUB-COMPONENTE: POWER BI (WEBVIEW) ---
+// COMPONENTE: POWER BI (WEBVIEW)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PantallaPowerBI() {
@@ -172,13 +182,11 @@ fun PantallaPowerBI() {
 
     val webView = remember {
         WebView(context).apply {
-            // 1. FORZAR TAMAÑO (Evita que Compose lo aplaste a 0 píxeles)
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
 
-            // 2. CONFIGURACIÓN COMPLETA
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -196,45 +204,38 @@ fun PantallaPowerBI() {
 
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-            // 3. EL CHIVATO: Captura errores internos de Power BI (JavaScript)
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                    // Esto imprimirá los errores en el Logcat en color rojo
                     Log.e("PowerBI_Espia", "JS Error: ${consoleMessage?.message()} -- Línea: ${consoleMessage?.lineNumber()}")
                     return super.onConsoleMessage(consoleMessage)
                 }
             }
 
-            // 4. EL CHIVATO 2: Captura errores de red o bloqueos de Microsoft
             webViewClient = object : WebViewClient() {
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     Log.e("PowerBI_Espia", "Error de Red: ${error?.description}")
                     super.onReceivedError(view, request, error)
                 }
 
-                // Opcional: Esto fuerza a cargar el enlace sin iFrame
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    return false // false significa "deja que el WebView lo cargue, no abras Chrome"
+                    return false
                 }
             }
 
-            // 5. CARGAMOS LA URL DIRECTA
             loadUrl("https://app.powerbi.com/view?r=eyJrIjoiNjk4MDQ1MDUtNjM5Ni00MmMzLTgzODktMDRiMGZiM2NlMzhiIiwidCI6ImU3ZjUzZjNmLTYzNmItNDNhZC04MDdlLTU3Yzk2NmZmN2RiOCIsImMiOjh9")
         }
     }
 
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { webView }
-    )
+    AndroidView(modifier = Modifier.fillMaxSize(), factory = { webView })
 }
 
-// --- OTROS LISTADOS (Organizados para limpieza) ---
+// OTROS LISTADOS
 
 @Composable
 fun ListadoNoticias(noticias: List<NoticiaUma>, cargando: Boolean, error: String?, context: android.content.Context) {
     if (cargando) CircularProgressIndicator(modifier = Modifier.fillMaxWidth().wrapContentSize(Alignment.Center))
-    else if (error != null) Text("Error al cargar noticias")
+    else if (error != null) Text("Error al cargar noticias: $error", color = Color.Red, modifier = Modifier.padding(16.dp))
+    else if (noticias.isEmpty()) Text("No hay noticias disponibles en este momento.", modifier = Modifier.padding(16.dp))
     else {
         LazyColumn {
             items(noticias) { noticia ->
@@ -271,48 +272,44 @@ fun CardNoticia(noticia: NoticiaUma, context: android.content.Context) {
     }
 }
 
+//LISTADO Y TARJETA PARA DESTACADOS
 @Composable
-fun ListadoEventos(eventos: List<EventoUma>, cargando: Boolean, error: String?, context: android.content.Context) {
+fun ListadoDestacados(destacados: List<DestacadoUma>, cargando: Boolean, error: String?, context: android.content.Context) {
     if (cargando) CircularProgressIndicator(modifier = Modifier.fillMaxWidth().wrapContentSize(Alignment.Center))
-    else if (error != null) Text("Error al cargar eventos")
+    else if (error != null) Text("Error al cargar destacados: $error", color = Color.Red, modifier = Modifier.padding(16.dp))
+    else if (destacados.isEmpty()) Text("No hay destacados disponibles en este momento.", modifier = Modifier.padding(16.dp))
     else {
         LazyColumn {
-            items(eventos) { evento ->
-                CardEvento(evento, context)
+            items(destacados) { destacado ->
+                CardDestacado(destacado, context)
             }
         }
     }
 }
 
 @Composable
-fun CardEvento(evento: EventoUma, context: android.content.Context) {
+fun CardDestacado(destacado: DestacadoUma, context: android.content.Context) {
     Card(
         modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()
             .clickable {
-                evento.link?.let { url ->
+                destacado.link?.let { url ->
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
-            },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)) // Un tonito diferente (morado clarito) para distinguirlos de las noticias
+            }
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Fila superior con la fecha destacada
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF8E24AA))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = evento.fecha,
-                    color = Color(0xFF8E24AA),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
+        Column {
+            destacado.imageUrl?.let {
+                AsyncImage(
+                    model = it, contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                    contentScale = ContentScale.Crop
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Título y descripción
-            Text(evento.titulo, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color.Black)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(evento.descripcion, fontSize = 14.sp, color = Color.DarkGray, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(destacado.titulo, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(destacado.descripcion, fontSize = 14.sp, color = Color.DarkGray, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

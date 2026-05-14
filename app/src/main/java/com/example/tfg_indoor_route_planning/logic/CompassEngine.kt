@@ -21,7 +21,7 @@ class CompassEngine(context: Context, private val onAngleChanged: (Float) -> Uni
     // Variables para el suavizado (EMA adaptado a ángulos)
     private var smoothedSin = 0.0
     private var smoothedCos = 0.0
-    private val ALPHA = 0.15 // Ajusta esto para más o menos inercia en la aguja
+    private val ALPHA = 0.15 //inercia en la aguja
 
     fun start() {
         accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
@@ -40,7 +40,7 @@ class CompassEngine(context: Context, private val onAngleChanged: (Float) -> Uni
             val R = FloatArray(9)
             val I = FloatArray(9)
 
-            // Android hace las matemáticas complejas por nosotros
+
             val success = SensorManager.getRotationMatrix(R, I, gravity, geomagnetic)
 
             if (success) {
@@ -50,7 +50,7 @@ class CompassEngine(context: Context, private val onAngleChanged: (Float) -> Uni
                 // orientation[0] es el Azimut en radianes (-π a π)
                 val azimuthRadians = orientation[0].toDouble()
 
-                // 🚨 MAGIA: Filtro EMA para ángulos (para evitar el salto brusco de 359º a 1º)
+                // Filtro EMA para ángulos (para evitar el salto brusco de 359º a 1º)
                 val currentSin = sin(azimuthRadians)
                 val currentCos = cos(azimuthRadians)
 
@@ -71,6 +71,5 @@ class CompassEngine(context: Context, private val onAngleChanged: (Float) -> Uni
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // No necesitamos hacer nada aquí
     }
 }
