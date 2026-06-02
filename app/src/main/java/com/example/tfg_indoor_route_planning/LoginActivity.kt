@@ -144,12 +144,14 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 try {
                                     val request = LoginRequest(idUsuario = idInput.trim(), password = passwordInput.trim())
                                     val authResponse = RetrofitClient.apiService.loginUsuario(request)
+                                    android.util.Log.d("TFG_LOGIN", "URL de la foto recibida: '${authResponse.usuario.foto_url}'")
                                     UserSession.iniciarSesion(
                                         context = context,
                                         id = authResponse.usuario.idUsuario,
                                         nombreUsuario = authResponse.usuario.nombre,
                                         rolUsuario = authResponse.usuario.rol,
-                                        jwtToken = authResponse.token
+                                        jwtToken = authResponse.token,
+                                        urlFoto = authResponse.usuario.foto_url ?: ""
                                     )
                                     isLoading = false
                                     onLoginSuccess()

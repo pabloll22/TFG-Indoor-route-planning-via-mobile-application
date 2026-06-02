@@ -2,6 +2,8 @@ package com.example.tfg_indoor_route_planning.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -51,6 +53,7 @@ import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.horario.SesionRespuesta
 import com.example.tfg_indoor_route_planning.models.POI
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoxScope.ControlesNavegacion(
@@ -289,8 +292,8 @@ fun BoxScope.ControlesNavegacion(
 
                     // Ocultamos el botón de favoritos si solo venimos a seleccionar un aula
                     if (!modoSeleccionAula) {
-                        val esFavorito = listaFavoritosIds.contains(poi.id)
-                        IconButton(onClick = { toggleFavorito(poi.id) }) {
+                        val esFavorito = listaFavoritosIds.contains(poi.nodoId)
+                        IconButton(onClick = { toggleFavorito(poi.nodoId) }) {
                             Icon(
                                 imageVector = if (esFavorito) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                                 contentDescription = "Guardar",
@@ -531,6 +534,7 @@ fun BotonEnlace(texto: String, url: String) {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun MiniClaseAulaItem(clase: SesionRespuesta, esMia: Boolean = false) {
     val colorHex = com.example.tfg_indoor_route_planning.horario.getColorForAsignatura(clase.asignaturaId.nombre)

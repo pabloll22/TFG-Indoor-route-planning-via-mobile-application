@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -61,6 +62,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.tfg_indoor_route_planning.api.FavoritosRequest
 import com.example.tfg_indoor_route_planning.api.MapApiService
 import com.example.tfg_indoor_route_planning.api.MapaResumen
+import com.example.tfg_indoor_route_planning.api.PoiFavorito
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
 import com.example.tfg_indoor_route_planning.logic.CompassEngine
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
@@ -154,6 +156,7 @@ class MainActivity : ComponentActivity() {
         if (permissions.all { it.value }) startScan()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -203,7 +206,8 @@ class MainActivity : ComponentActivity() {
             var textoDestinoExterno by remember { mutableStateOf("") }
             var textoOrigenExterno by remember { mutableStateOf("") }
 
-            var listaFavoritosIds by remember { mutableStateOf(setOf<String>()) }
+            var listaFavoritos by remember { mutableStateOf<List<PoiFavorito>>(emptyList()) }
+            val listaFavoritosIds = listaFavoritos.map { it.idPoi }.toSet()
             var mostrarHojaGuardados by remember { mutableStateOf(false) } // Para controlar el BottomSheet de guardados
 
             var mostrarHojaExplorar by remember { mutableStateOf(false) }
@@ -216,7 +220,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         val usuario = RetrofitClient.apiService.getUsuario(idUsuarioActual)
                         // Convertimos la List del servidor al Set que usa la interfaz
-                        listaFavoritosIds = usuario.poisFavoritos.toSet()
+                        listaFavoritos = usuario.poisFavoritos
                         Log.d("FAVORITOS", "Cargados ${listaFavoritosIds.size} favoritos de la base de datos")
                     } catch (e: Exception) {
                         Log.e("FAVORITOS", "Error al cargar favoritos iniciales", e)
@@ -230,25 +234,39 @@ class MainActivity : ComponentActivity() {
             val toggleFavorito: (String) -> Unit = { idPoi ->
                 if (UserSession.esInvitado) {
                     Toast.makeText(this@MainActivity, "Regístrate para guardar favoritos", Toast.LENGTH_SHORT).show()
-                }else{
-                    // 1. Calculamos la nueva lista en memoria
-                    val nuevaLista = if (listaFavoritosIds.contains(idPoi)) {
-                        listaFavoritosIds - idPoi
+                } else {
+                    // Comprobamos si el POI ya está en la lista
+                    val existe = listaFavoritos.any { it.idPoi == idPoi }
+
+                    val nuevaLista = if (existe) {
+                        // Si ya está, lo eliminamos filtrando la lista
+                        listaFavoritos.filter { it.idPoi != idPoi }
                     } else {
-                        listaFavoritosIds + idPoi
+                        // Si NO está, buscamos el POI en el mapa para sacar su nombre
+                        val poiEncontrado = todosLosPoisDelEdificio.find { it.nodoId == idPoi }
+
+                        if (poiEncontrado != null) {
+                            // Creamos el objeto PoiFavorito completo
+                            val nuevoFavorito = PoiFavorito(
+                                idPoi = poiEncontrado.nodoId,
+                                nombrePoi = poiEncontrado.nombre,
+                                facultad = mapaDescargado?.nombre ?: "Facultad"
+                            )
+                            listaFavoritos + nuevoFavorito // Lo añadimos a la lista
+                        } else {
+                            listaFavoritos // Por seguridad, si no lo encuentra, dejamos la lista igual
+                        }
                     }
 
-                    // 2. Actualizamos la UI inmediatamente
-                    listaFavoritosIds = nuevaLista
+                    // Actualizamos la UI inmediatamente
+                    listaFavoritos = nuevaLista
 
-                    // 3. Enviamos la lista actualizada a la base de datos en segundo plano
+                    // Enviamos la lista COMPLETA de objetos a tu backend en segundo plano
                     val idUsuarioActual = UserSession.usuarioId
 
                     lifecycleScope.launch {
                         try {
-                            // Convertimos el Set a List para enviarlo por Retrofit
-                            val request =
-                                FavoritosRequest(favoritos = nuevaLista.toList())
+                            val request = FavoritosRequest(favoritos = nuevaLista)
                             val response = RetrofitClient.apiService.actualizarFavoritos(idUsuarioActual, request)
 
                             if (!response.isSuccessful) {
@@ -548,7 +566,7 @@ class MainActivity : ComponentActivity() {
                                             onClick = { mostrarHojaGuardados = true }
                                         )
 
-                                        // BOTÓN 3: VOLVER (Integrado aquí)
+                                        // BOTÓN 3: VOLVER
                                         NavigationItem(
                                             icon = Icons.AutoMirrored.Filled.ArrowBack,
                                             label = "Volver",
@@ -564,6 +582,13 @@ class MainActivity : ComponentActivity() {
                                                 activarBuscadorExterno = false
                                                 textoDestinoExterno = ""
                                                 textoOrigenExterno=""
+
+                                                userPosition = null
+                                                currentSmoothedPosition = null
+                                                lastDrawnPosition = null
+                                                currentUserNode = null
+                                                activeBeacons.clear()
+                                                devices.clear()
                                             }
                                         )
                                     }
@@ -571,7 +596,7 @@ class MainActivity : ComponentActivity() {
 
                                 if (mostrarHojaGuardados) {
                                     HojaGuardadosBottomSheet(
-                                        listaFavoritosIds = listaFavoritosIds,
+                                        listaFavoritos = listaFavoritos,
                                         todosLosPoisDelEdificio = todosLosPoisDelEdificio,
                                         onDismiss = { mostrarHojaGuardados = false },
                                         onToggleFavorito = { id -> toggleFavorito(id) },
@@ -952,6 +977,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun cargarDatosDesdeServidor(idSeleccionado: String) {
+        userPosition = null
+        currentSmoothedPosition = null
+        lastDrawnPosition = null
+        currentUserNode = null
+        activeBeacons.clear()
+        devices.clear()
         lifecycleScope.launch {
             try {
                 mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
@@ -1224,8 +1255,15 @@ class MainActivity : ComponentActivity() {
         return perms.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
 
-    private fun base64ToImageBitmap(base64String: String): ImageBitmap? {
+    private fun base64ToImageBitmap(base64String: String?): ImageBitmap? {
+        // 2. Comprobamos si viene vacío desde la base de datos
+        if (base64String.isNullOrEmpty()) {
+            Log.e("API_TFG", "No hay imagen para esta planta (llegó null o vacío)")
+            return null
+        }
+
         return try {
+            // 3. Ya podemos procesar de forma segura
             val cleanBase64 = if (base64String.contains(",")) {
                 base64String.split(",")[1]
             } else {
@@ -1233,7 +1271,7 @@ class MainActivity : ComponentActivity() {
             }
             val imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
             val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-            bitmap.asImageBitmap()
+            bitmap?.asImageBitmap()
         } catch (e: Exception) {
             Log.e("API_TFG", "Error decodificando la imagen Base64", e)
             null

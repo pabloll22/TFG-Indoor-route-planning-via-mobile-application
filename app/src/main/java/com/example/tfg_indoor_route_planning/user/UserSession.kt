@@ -6,6 +6,7 @@ object UserSession {
     var nombre: String = ""
     var rol: String = "ALUMNO"
     var token: String = ""
+    var fotoUrl: String = ""
 
     val esProfesor: Boolean
         get() = rol == "PROFESOR"
@@ -20,16 +21,18 @@ object UserSession {
         nombre = prefs.getString("nombre", "") ?: ""
         rol = prefs.getString("rol", "ALUMNO") ?: "ALUMNO"
         token = prefs.getString("token", "") ?: ""
+        fotoUrl = prefs.getString("fotoUrl", "") ?: ""
 
         return usuarioId.isNotEmpty() && token.isNotEmpty()// Devuelve true si hay alguien logueado
     }
 
     // Guarda en memoria y en la sesión actual
-    fun iniciarSesion(context: Context, id: String, nombreUsuario: String, rolUsuario: String, jwtToken: String) {
+    fun iniciarSesion(context: Context, id: String, nombreUsuario: String, rolUsuario: String, jwtToken: String, urlFoto: String = "") {
         usuarioId = id
         nombre = nombreUsuario
         rol = rolUsuario
         token = jwtToken
+        fotoUrl = urlFoto
 
         val prefs = context.getSharedPreferences("ControlUMAPrefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
@@ -37,6 +40,7 @@ object UserSession {
             putString("nombre", nombreUsuario)
             putString("rol", rolUsuario)
             putString("token", jwtToken)
+            putString("fotoUrl", urlFoto)
             apply()
         }
     }
@@ -47,5 +51,16 @@ object UserSession {
         usuarioId = ""
         val prefs = context.getSharedPreferences("ControlUMAPrefs", Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
+    }
+
+    fun actualizarFotoUrl(context: Context, nuevaUrl: String) {
+        fotoUrl = nuevaUrl // Actualiza la variable en tiempo real
+
+        // Lo guarda en memoria para que sobreviva al cerrar la app
+        val prefs = context.getSharedPreferences("ControlUMAPrefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putString("fotoUrl", nuevaUrl)
+            apply()
+        }
     }
 }

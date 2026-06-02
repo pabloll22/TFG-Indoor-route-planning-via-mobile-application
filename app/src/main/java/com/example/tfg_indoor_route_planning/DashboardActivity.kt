@@ -1,22 +1,32 @@
 package com.example.tfg_indoor_route_planning
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Accessible
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +38,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.tfg_indoor_route_planning.api.PoiFavorito
+import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.repository.HorarioRepository
+import com.example.tfg_indoor_route_planning.repository.MapaRepository
+import com.example.tfg_indoor_route_planning.repository.UsuarioRepository
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Date
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,6 +69,172 @@ class DashboardActivity : ComponentActivity() {
                     onNavigateToNoticias = {
                         val intent = Intent(this@DashboardActivity, NoticiasActivity::class.java)
                         startActivity(intent)
+                    },
+                    onNavigateToMatricula = {
+                        val intent = Intent(this@DashboardActivity, MatriculacionActivity::class.java)
+                        startActivity(intent)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardScreen(
+    onNavigateToMapa: () -> Unit,
+    onNavigateToHorario: () -> Unit,
+    onNavigateToNoticias: () -> Unit,
+    onNavigateToMatricula: () -> Unit
+) {
+    val context = LocalContext.current
+    val nombreUsuario = UserSession.nombre.ifBlank { "Usuario" }
+    val rolUsuario = UserSession.rol
+    val urlFotoActual = UserSession.fotoUrl ?: ""
+
+    var showProfileSheet by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF8F9FA))
+                .padding(horizontal = 24.dp)
+        ) {
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // ==========================================
+            // CABECERA CON BOTÓN DE PERFIL
+            // ==========================================
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        color = Color(0xFF6200EE).copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = rolUsuario.uppercase(),
+                            color = Color(0xFF6200EE),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            letterSpacing = 1.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "¡Hola, $nombreUsuario!",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.Black,
+                        lineHeight = 32.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "¿Qué necesitas hacer hoy?",
+                        fontSize = 16.sp,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(if (urlFotoActual.isBlank()) Color(0xFF6200EE) else Color.Transparent)
+                        .clickable { showProfileSheet = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (urlFotoActual.isBlank()) {
+                        val inicial = nombreUsuario.firstOrNull()?.uppercase() ?: "U"
+                        Text(text = inicial, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        AsyncImage(
+                            model = urlFotoActual,
+                            contentDescription = "Foto de perfil",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // ==========================================
+            // LISTA DE TARJETAS HORIZONTALES
+            // ==========================================
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DashboardCardWide(
+                    title = "Navegación y Mapas",
+                    subtitle = "Encuentra tu ruta en la facultad",
+                    imageResId = R.drawable.location,
+                    onClick = onNavigateToMapa
+                )
+
+                if (rolUsuario != "PROFESOR") {
+                    DashboardCardWide(
+                        title = "Mis Asignaturas",
+                        subtitle = "Configura tu matrícula y grupos",
+                        imageResId = R.drawable.book, // O el icono que le pusieras
+                        enabled = !UserSession.esInvitado,
+                        onClick = onNavigateToMatricula
+                    )
+                }
+
+                DashboardCardWide(
+                    title = "Mi Horario",
+                    subtitle = "Gestiona tus clases de hoy",
+                    imageResId = R.drawable.timetable,
+                    enabled = !UserSession.esInvitado,
+                    onClick = onNavigateToHorario
+                )
+
+                DashboardCardWide(
+                    title = "Noticias UMA",
+                    subtitle = "Últimas novedades del campus",
+                    imageResId = R.drawable.news,
+                    onClick = onNavigateToNoticias
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // ==========================================
+        // MENÚ DESPLEGABLE DE PERFIL (Bottom Sheet)
+        // ==========================================
+        if (showProfileSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showProfileSheet = false },
+                containerColor = Color.White,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            ) {
+                ProfileMenuContent(
+                    onCerrarSesion = {
+                        showProfileSheet = false
+                        UserSession.cerrarSesion(context)
+                        MapaRepository.limpiarCache()
+                        UsuarioRepository.limpiarCache()
+                        HorarioRepository.limpiarCache()
+                        val intent = Intent(context, LoginActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        context.startActivity(intent)
                     }
                 )
             }
@@ -54,120 +243,325 @@ class DashboardActivity : ComponentActivity() {
 }
 
 @Composable
-fun DashboardScreen(
-    onNavigateToMapa: () -> Unit,
-    onNavigateToHorario: () -> Unit,
-    onNavigateToNoticias: () -> Unit
-) {
+fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val nombreUsuario = UserSession.nombre.ifBlank { "Usuario" }
-    val rolUsuario = UserSession.rol
+    val niuUsuario = UserSession.usuarioId.ifBlank { "Sin identificar" }
+
+    var urlFotoActual by remember { mutableStateOf(UserSession.fotoUrl ?: "") }
+    var isLoadingFoto by remember { mutableStateOf(false) }
+    var rutasAccesibles by remember { mutableStateOf(false) }
+
+    var expandFavoritos by remember { mutableStateOf(false) }
+
+    var listaFavoritos by remember { mutableStateOf<List<PoiFavorito>>(emptyList()) }
+    var isLoadingFavoritos by remember { mutableStateOf(false) }
+
+    // Obtenemos los favoritos desde el backend al abrir el menú
+    LaunchedEffect(Unit) {
+        if (!UserSession.esInvitado) {
+            isLoadingFavoritos = true
+            try {
+                val usuarioInfo = RetrofitClient.apiService.getUsuario(UserSession.usuarioId)
+                listaFavoritos = usuarioInfo.poisFavoritos
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isLoadingFavoritos = false
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { imagenSeleccionada ->
+            isLoadingFoto = true
+            coroutineScope.launch {
+                var tempFile: File? = null
+                try {
+                    tempFile = uriToFile(context, imagenSeleccionada)
+
+                    if (tempFile != null) {
+                        val requestFile = tempFile.asRequestBody("image/*".toMediaTypeOrNull())
+                        val body = MultipartBody.Part.createFormData("foto", tempFile.name, requestFile)
+
+                        val response = RetrofitClient.apiService.subirFotoPerfil(UserSession.token, body)
+
+                        if (response.isSuccessful) {
+                            val nuevaUrl = response.body()?.url ?: ""
+                            UserSession.actualizarFotoUrl(context, nuevaUrl)
+                            urlFotoActual = nuevaUrl
+                            Toast.makeText(context, "✅ Foto actualizada", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val codigoError = response.code()
+                            val cuerpoError = response.errorBody()?.string() ?: "Sin detalles"
+                            android.util.Log.e("TFG_FOTO", "Fallo servidor: Código $codigoError - Detalles: $cuerpoError")
+                            Toast.makeText(context, "❌ Error $codigoError. Revisa el Logcat", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "❌ Error al procesar la imagen local", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error de conexión al subir la foto", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isLoadingFoto = false
+                    tempFile?.delete()
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8F9FA))
-            .padding(horizontal = 24.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
+        // AVATAR GRANDE
+        Box(contentAlignment = Alignment.BottomEnd) {
+            Box(
+                modifier = Modifier
+                    .size(90.dp)
+                    .clip(CircleShape)
+                    .background(if (urlFotoActual.isBlank()) Color(0xFF6200EE).copy(alpha = 0.1f) else Color.Transparent)
+                    .clickable { galleryLauncher.launch("image/*") },
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoadingFoto) {
+                    CircularProgressIndicator(color = Color(0xFF6200EE))
+                } else if (urlFotoActual.isBlank()) {
+                    val inicial = nombreUsuario.firstOrNull()?.uppercase() ?: "U"
+                    Text(text = inicial, color = Color(0xFF6200EE), fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    AsyncImage(
+                        model = urlFotoActual,
+                        contentDescription = "Foto de perfil grande",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
 
-        // ==========================================
-        // CABECERA
-        // ==========================================
-        Surface(
-            color = Color(0xFF6200EE).copy(alpha = 0.1f),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text(
-                text = rolUsuario.uppercase(),
-                color = Color(0xFF6200EE),
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                letterSpacing = 1.sp
-            )
+            if (!isLoadingFoto) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(Color.White, CircleShape)
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                        .background(Color.Gray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Cambiar foto", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Text(
-            text = "¡Hola, $nombreUsuario!",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.Black,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Text(text = nombreUsuario, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "¿Qué necesitas hacer hoy?",
-            fontSize = 16.sp,
-            color = Color.Gray,
-            fontWeight = FontWeight.Medium
-        )
+        Text(text = "NIU: $niuUsuario", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // ==========================================
-        // LISTA DE TARJETAS HORIZONTALES (Diseño Limpio)
-        // ==========================================
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            DashboardCardWide(
-                title = "Navegación y Mapas",
-                subtitle = "Encuentra tu ruta en la facultad",
-                imageResId = R.drawable.location,
-                onClick = onNavigateToMapa
-            )
+        Divider(color = Color(0xFFEEEEEE))
 
-            DashboardCardWide(
-                title = "Mi Horario",
-                subtitle = "Gestiona tus clases de hoy",
-                imageResId = R.drawable.timetable,
-                enabled = !UserSession.esInvitado,
-                onClick = onNavigateToHorario
-            )
+        // ==========================================
+        // OPCIÓN: Favoritos
+        // ==========================================
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expandFavoritos = !expandFavoritos }
+                    .padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.size(40.dp).background(Color(0xFFFFF8E1), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFC107))
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Mis Sitios Favoritos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Aulas y laboratorios guardados", color = Color.Gray, fontSize = 13.sp)
+                }
+                // Cambiamos el icono dependiendo de si está expandido o no
+                Icon(
+                    imageVector = if (expandFavoritos) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.LightGray
+                )
+            }
 
-            DashboardCardWide(
-                title = "Noticias UMA",
-                subtitle = "Últimas novedades del campus",
-                imageResId = R.drawable.news,
-                onClick = onNavigateToNoticias
-            )
+            // CONTENIDO DESPLEGABLE DE FAVORITOS
+            AnimatedVisibility(visible = expandFavoritos) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, bottom = 16.dp, end = 24.dp)
+                ) {
+                    if (isLoadingFavoritos) {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFFFFC107))
+                        }
+                    } else if (listaFavoritos.isEmpty()) {
+                        Text("Aún no tienes sitios favoritos guardados.", color = Color.Gray, fontSize = 13.sp)
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        listaFavoritos.forEach { favorito ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            try {
+                                                val mapas = RetrofitClient.apiService.getTodosLosMapas()
+                                                val mapaDestino = mapas.find { it.nombre == favorito.facultad }
+
+                                                if (mapaDestino != null) {
+                                                    val intent = Intent(context, MainActivity::class.java).apply {
+                                                        putExtra("AULA_DESTINO_ID", favorito.idPoi)
+                                                        putExtra("FACULTAD_DESTINO_ID", mapaDestino.mapaId)
+                                                    }
+                                                    context.startActivity(intent)
+                                                } else {
+                                                    Toast.makeText(context, "No se encontró el mapa", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error de red al abrir el mapa", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 14.dp) // Ajustamos un poco el padding al quitar el icono
+                                ) {
+                                    // 1. Textos principales (ahora alineados a la izquierda directamente)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = favorito.nombrePoi,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            // Mantenemos el iconito de ciudad porque da buen contexto
+                                            Icon(
+                                                imageVector = Icons.Default.LocationCity,
+                                                contentDescription = null,
+                                                tint = Color.Gray,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = favorito.facultad,
+                                                fontSize = 13.sp,
+                                                color = Color.Gray,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    // 2. Flecha indicadora de acción
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = "Ir al mapa",
+                                        tint = Color(0xFFE0E0E0),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // ==========================================
-        // BOTÓN INFERIOR DE SALIR
-        // ==========================================
-        OutlinedButton(
-            onClick = {
-                UserSession.cerrarSesion(context)
-                val intent = Intent(context, LoginActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                context.startActivity(intent)
-            },
+        Divider(color = Color(0xFFEEEEEE))
+
+        // OPCIÓN: Accesibilidad
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD32F2F))
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                contentDescription = "Cerrar sesión",
-                modifier = Modifier.size(20.dp)
+            Box(modifier = Modifier.size(40.dp).background(Color(0xFFE3F2FD), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Accessible, contentDescription = null, tint = Color(0xFF2196F3))
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Rutas Accesibles", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Evitar escaleras en el mapa", color = Color.Gray, fontSize = 13.sp)
+            }
+            Switch(
+                checked = rutasAccesibles,
+                onCheckedChange = { rutasAccesibles = it },
+                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF6200EE), checkedTrackColor = Color(0xFF6200EE).copy(alpha = 0.5f))
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("CERRAR SESIÓN", fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = 1.sp)
         }
 
+        Divider(color = Color(0xFFEEEEEE))
+
         Spacer(modifier = Modifier.height(24.dp))
+
+        // BOTÓN SALIR
+        TextButton(
+            onClick = onCerrarSesion,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFD32F2F), containerColor = Color(0xFFFFEBEE))
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("CERRAR SESIÓN", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
+// ==========================================================
+// FUNCIÓN AUXILIAR PARA LA CÁMARA/GALERÍA
+// ==========================================================
+private fun uriToFile(context: Context, uri: Uri): File? {
+    return try {
+        val file = File(context.cacheDir, "temp_perfil_${Date().time}.jpg")
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val outputStream = FileOutputStream(file)
+
+        inputStream?.copyTo(outputStream)
+        inputStream?.close()
+        outputStream.close()
+
+        file
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+// ==========================================================
+// COMPONENTE DE TARJETA
+// ==========================================================
 @Composable
 fun DashboardCardWide(
     title: String,
@@ -200,15 +594,13 @@ fun DashboardCardWide(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(42.dp),
+                modifier = Modifier.size(42.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     painter = painterResource(id = imageResId),
                     contentDescription = title,
-                    modifier = Modifier
-                        .fillMaxSize(),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                     alpha = if (enabled) 1f else 0.3f
                 )
@@ -216,27 +608,28 @@ fun DashboardCardWide(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Textos
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (enabled) Color.Black else Color.Gray
+                    color = if (enabled) Color.Black else Color.Gray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     fontSize = 14.sp,
                     color = Color.Gray,
-                    maxLines = 1,
+                    lineHeight = 18.sp,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Icono de acción
             if (enabled) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,

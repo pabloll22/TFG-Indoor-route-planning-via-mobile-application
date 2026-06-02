@@ -2,36 +2,18 @@ package com.example.tfg_indoor_route_planning.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.BookmarkRemove
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,17 +21,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tfg_indoor_route_planning.api.PoiFavorito
 import com.example.tfg_indoor_route_planning.models.POI
 
-@OptIn(ExperimentalMaterial3Api::class) // A veces es necesario para el ModalBottomSheet en Material 3
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HojaGuardadosBottomSheet(
-    listaFavoritosIds: Set<String>,
-    todosLosPoisDelEdificio: List<POI>, // Sustituye 'POI' por el nombre real de tu clase de datos
+    listaFavoritos: List<PoiFavorito>,
+    todosLosPoisDelEdificio: List<POI>,
     onDismiss: () -> Unit,
     onToggleFavorito: (String) -> Unit,
     onNavigateClick: (POI) -> Unit
 ) {
+    val favoritosDeEstaFacultad = listaFavoritos.filter { favorito ->
+        todosLosPoisDelEdificio.any { poiEdificio -> poiEdificio.nodoId == favorito.idPoi }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -74,15 +61,15 @@ fun HojaGuardadosBottomSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Tus sitios guardados",
+                    text = "Guardados en este mapa",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.DarkGray
                 )
             }
 
-            // ESTADO VACÍO
-            if (listaFavoritosIds.isEmpty()) {
+            // ESTADO VACÍO (Adaptado para la facultad actual)
+            if (favoritosDeEstaFacultad.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -97,14 +84,14 @@ fun HojaGuardadosBottomSheet(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Aún no tienes sitios guardados",
+                        text = "Sin guardados en este edificio",
                         color = Color.DarkGray,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Explora el mapa y toca el icono de guardado en las aulas o lugares que quieras tener siempre a mano.",
+                        text = "Toca el icono de guardado en las aulas de este mapa para tenerlas aquí a mano.",
                         color = Color.Gray,
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -112,15 +99,18 @@ fun HojaGuardadosBottomSheet(
                     )
                 }
             }
-            // LISTA DE FAVORITOS
+            // LISTA DE FAVORITOS (Solo los de la facultad actual)
             else {
                 LazyColumn {
-                    val poisGuardados = todosLosPoisDelEdificio.filter { listaFavoritosIds.contains(it.id) }
-                    items(poisGuardados) { poi ->
+                    items(favoritosDeEstaFacultad) { favorito ->
+
+                        // Como ya hemos filtrado, sabemos 100% que este POI existe en el edificio
+                        val poiReal = todosLosPoisDelEdificio.first { it.nodoId == favorito.idPoi }
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { /* Opcional: Centrar mapa en este POI */ }
+                                .clickable { onNavigateClick(poiReal) }
                                 .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -137,7 +127,7 @@ fun HojaGuardadosBottomSheet(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = poi.nombre,
+                                    text = poiReal.nombre,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
@@ -152,7 +142,7 @@ fun HojaGuardadosBottomSheet(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "Planta ${poi.plantaId}",
+                                        text = "Planta ${poiReal.plantaId}",
                                         fontSize = 13.sp,
                                         color = Color.Gray
                                     )
@@ -160,7 +150,7 @@ fun HojaGuardadosBottomSheet(
                             }
 
                             IconButton(
-                                onClick = { onToggleFavorito(poi.id) },
+                                onClick = { onToggleFavorito(poiReal.nodoId) },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -173,14 +163,14 @@ fun HojaGuardadosBottomSheet(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             Button(
-                                onClick = { onNavigateClick(poi) }, // <--- Usamos el callback aquí
+                                onClick = { onNavigateClick(poiReal) },
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                shape = RoundedCornerShape(50),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Ver detalles",
+                                    contentDescription = "Ir",
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))

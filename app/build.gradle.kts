@@ -72,6 +72,10 @@ dependencies {
     // Para cargar las imágenes de las noticias
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+
+    implementation("io.coil-kt:coil-compose:2.5.0")
+
     // AltBeacon Library for BLE
     implementation(libs.android.beacon.library)
 }

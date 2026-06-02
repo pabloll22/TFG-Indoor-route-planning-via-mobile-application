@@ -1,9 +1,15 @@
 package com.example.tfg_indoor_route_planning
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -31,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tfg_indoor_route_planning.api.RegistroRequest
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.launch
 
 class RegistroActivity : ComponentActivity() {
@@ -62,8 +73,39 @@ fun RegistroScreen(
     var rolSeleccionado by remember { mutableStateOf(opcionesRol[0]) }
 
     var isLoading by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
+    var carnetValidado by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // Comprobamos si los tres campos están rellenos
+    val todosLosCamposLlenos = idInput.isNotBlank() && nombreInput.isNotBlank() && passwordInput.isNotBlank()
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { imagenSeleccionada ->
+            isScanning = true
+            CarnetValidator.validarCarnet(context, imagenSeleccionada) { success, niuExtraido, rolDetectado ->
+                isScanning = false
+                if (success) {
+                    // VERIFICACIÓN DE SEGURIDAD: El NIU del carnet debe ser igual al introducido
+                    if (niuExtraido != null && niuExtraido.equals(idInput.trim(), ignoreCase = true)) {
+                        carnetValidado = true
+                        if (rolDetectado != null) {
+                            rolSeleccionado = rolDetectado
+                        }
+                        Toast.makeText(context, "✅ Identidad verificada correctamente", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "❌ El NIU del carnet ($niuExtraido) no coincide con el introducido", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    Toast.makeText(context, "❌ No se detecta un carnet válido de la UMA", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -75,8 +117,8 @@ fun RegistroScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(24.dp)
         ) {
-            Text(text = "Crear Cuenta", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF6200EE))
-            Text(text = "Únete a ControlUMA", fontSize = 16.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+            Text(text = "Registro Oficial", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF6200EE))
+            Text(text = "Identifícate con tu carnet de la UMA", fontSize = 16.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -90,7 +132,7 @@ fun RegistroScreen(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // SELECTOR DE ROL (Premium UI)
+                    // SELECTOR DE ROL
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -104,7 +146,7 @@ fun RegistroScreen(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (isSelected) Color.White else Color.Transparent)
-                                    .clickable { rolSeleccionado = rol }
+                                    .clickable { if (!carnetValidado) rolSeleccionado = rol }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -120,17 +162,20 @@ fun RegistroScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // ID DE USUARIO
+                    // ID DE USUARIO (NIU)
                     OutlinedTextField(
                         value = idInput,
-                        onValueChange = { idInput = it },
-                        label = { Text("ID de Usuario") },
+                        onValueChange = { if (!carnetValidado) idInput = it },
+                        label = { Text("NIU (ID de Usuario)") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF6200EE)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        readOnly = carnetValidado, // Se bloquea si ya está validado
                         shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF6200EE))
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (carnetValidado) Color(0xFF4CAF50) else Color(0xFF6200EE)
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -138,14 +183,17 @@ fun RegistroScreen(
                     // NOMBRE COMPLETO
                     OutlinedTextField(
                         value = nombreInput,
-                        onValueChange = { nombreInput = it },
+                        onValueChange = { if (!carnetValidado) nombreInput = it },
                         label = { Text("Nombre Completo") },
                         leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = Color(0xFF6200EE)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        readOnly = carnetValidado, // Se bloquea si ya está validado
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF6200EE))
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (carnetValidado) Color(0xFF4CAF50) else Color(0xFF6200EE)
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -153,7 +201,7 @@ fun RegistroScreen(
                     // CONTRASEÑA
                     OutlinedTextField(
                         value = passwordInput,
-                        onValueChange = { passwordInput = it },
+                        onValueChange = { if (!carnetValidado) passwordInput = it },
                         label = { Text("Contraseña") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF6200EE)) },
                         trailingIcon = {
@@ -166,19 +214,62 @@ fun RegistroScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        readOnly = carnetValidado, // Se bloquea si ya está validado
                         shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF6200EE))
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (carnetValidado) Color(0xFF4CAF50) else Color(0xFF6200EE)
+                        )
                     )
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                    // BOTÓN REGISTRARSE
+                    // ==========================================
+                    // BOTÓN DE VERIFICACIÓN DE CARNET
+                    // ==========================================
+                    if (carnetValidado) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFE8F5E9), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Identidad Universitaria Verificada", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = { galleryLauncher.launch("image/*") },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = todosLosCamposLlenos && !isScanning // Solo activo si todo está relleno
+                        ) {
+                            if (isScanning) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Analizando documento...", color = Color.White)
+                            } else {
+                                Icon(Icons.Default.DocumentScanner, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = if (todosLosCamposLlenos) "VERIFICAR CARNET UMA" else "RELLENA LOS DATOS PRIMERO",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // ==========================================
+                    // BOTÓN FINAL DE CREAR CUENTA
+                    // ==========================================
                     Button(
                         onClick = {
-                            if (idInput.isBlank() || nombreInput.isBlank() || passwordInput.isBlank()) {
-                                Toast.makeText(context, "Rellena todos los campos", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
                             isLoading = true
                             coroutineScope.launch {
                                 try {
@@ -199,14 +290,23 @@ fun RegistroScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(54.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6200EE),
+                            disabledContainerColor = Color(0xFFE0E0E0)
+                        ),
                         shape = RoundedCornerShape(16.dp),
-                        enabled = !isLoading
+                        enabled = !isLoading && carnetValidado // Solo habilitado si el carnet validó el NIU
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         } else {
-                            Text("CREAR CUENTA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
+                            Text(
+                                text = "CREAR CUENTA",
+                                color = if (carnetValidado) Color.White else Color.Gray,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                letterSpacing = 1.sp
+                            )
                         }
                     }
                 }
@@ -215,10 +315,74 @@ fun RegistroScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // VOLVER AL LOGIN
-            TextButton(onClick = onVolverLogin, enabled = !isLoading) {
+            TextButton(onClick = onVolverLogin, enabled = !isLoading && !isScanning) {
                 Text(text = "¿Ya tienes cuenta? ", color = Color.Gray)
                 Text(text = "Inicia sesión", color = Color(0xFF6200EE), fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+// ==============================================================
+// MOTOR DE RECONOCIMIENTO ÓPTICO (OCR) CON GOOGLE ML KIT
+// ==============================================================
+object CarnetValidator {
+    fun validarCarnet(
+        context: Context,
+        uri: Uri,
+        onResult: (isValid: Boolean, niu: String?, rolDetectado: String?) -> Unit
+    ) {
+        try {
+            val image = InputImage.fromFilePath(context, uri)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    // Convertimos a minúsculas para que la búsqueda no falle por mayúsculas
+                    val textoCompleto = visionText.text.lowercase()
+
+                    Log.d("OCR_TFG", "Texto leído:\n$textoCompleto")
+
+                    // 1. Validar que la imagen pertenece a la UMA
+                    val esUMA = textoCompleto.contains("universidad de málaga") ||
+                            textoCompleto.contains("uma") ||
+                            textoCompleto.contains("universidad de malaga")
+
+                    // 2. Extraer el NIU exacto (Ej: "niu: 061090914x")
+                    // Busca "niu:", seguido de espacios opcionales (\s*), y captura números y letras ([0-9a-z]+)
+                    val regexNIU = Regex("niu:\\s*([0-9a-z]+)")
+                    val matchNIU = regexNIU.find(textoCompleto)
+
+                    // Extraemos el grupo 1 (lo que está entre paréntesis en el Regex), que es el NIU limpio
+                    val niuEncontrado = matchNIU?.groupValues?.getOrNull(1)
+
+                    Log.d("OCR_TFG", "NIU extraído: $niuEncontrado")
+
+                    // 3. Buscar indicadores de rol
+                    val esEstudiante = textoCompleto.contains("estudiante") ||
+                            textoCompleto.contains("alumno") ||
+                            textoCompleto.contains("grado")
+
+                    val esProfesor = textoCompleto.contains("pdi") ||
+                            textoCompleto.contains("profesor") ||
+                            textoCompleto.contains("investigador") ||
+                            textoCompleto.contains("docente")
+
+                    // Verificamos si todo es correcto
+                    if (esUMA && niuEncontrado != null && (esEstudiante || esProfesor)) {
+                        val rol = if (esProfesor) "PROFESOR" else "ALUMNO"
+                        onResult(true, niuEncontrado, rol)
+                    } else {
+                        Log.e("OCR_TFG", "Fallo validación -> UMA: $esUMA, NIU: $niuEncontrado, Estudiante: $esEstudiante")
+                        onResult(false, null, null)
+                    }
+                }
+                .addOnFailureListener {
+                    onResult(false, null, null)
+                }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            onResult(false, null, null)
         }
     }
 }
