@@ -20,8 +20,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tfg_indoor_route_planning.api.MapApiService
-import com.example.tfg_indoor_route_planning.api.MapaResumen
+import com.example.tfg_indoor_route_planning.api.dto.MapaResumen
+import com.example.tfg_indoor_route_planning.api.services.MapApiService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

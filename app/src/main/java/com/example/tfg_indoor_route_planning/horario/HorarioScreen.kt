@@ -24,19 +24,25 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tfg_indoor_route_planning.MainActivity
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.CancelarClaseRequest
+import com.example.tfg_indoor_route_planning.api.dto.CrearClaseRequest
+import com.example.tfg_indoor_route_planning.api.dto.SesionRespuesta
+import com.example.tfg_indoor_route_planning.repositories.HorarioRepository
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -55,24 +61,36 @@ fun HorarioScreen(
     var horarioCompleto by remember { mutableStateOf<List<SesionRespuesta>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
 
+    // --- ESTADOS PARA EL SWIPE TO REFRESH ---
+    val pullToRefreshState = rememberPullToRefreshState()
+
     // LocalDate para manejar fechas reales
     var fechaSeleccionada by remember { mutableStateOf(LocalDate.now()) }
 
     val formateadorFecha = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     val fechaSeleccionadaTexto = fechaSeleccionada.format(formateadorFecha)
 
+    // Carga inicial normal (usa la caché si existe)
     LaunchedEffect(usuarioId, esProfesor) {
-        cargarHorario(usuarioId, esProfesor) { horario ->
+        cargarHorario(usuarioId, forzarRecarga = false) { horario ->
             horarioCompleto = horario
             cargando = false
         }
     }
 
-    // Calculamos el Lunes de la semana seleccionada para pintar los 5 días
-    val inicioDeSemana = fechaSeleccionada.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    val diasDeLaSemana = (0..4).map { inicioDeSemana.plusDays(it.toLong()) } // Lunes a Viernes
+    // Lógica cuando el usuario tira hacia abajo para recargar
+    if (pullToRefreshState.isRefreshing) {
+        LaunchedEffect(true) {
+            cargarHorario(usuarioId, forzarRecarga = true) { horario ->
+                horarioCompleto = horario
+                pullToRefreshState.endRefresh()
+            }
+        }
+    }
 
-    // Formateador para el título
+    val inicioDeSemana = fechaSeleccionada.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    val diasDeLaSemana = (0..4).map { inicioDeSemana.plusDays(it.toLong()) }
+
     val mesAñoFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale("es", "ES"))
     var mostrarFormularioCrear by remember { mutableStateOf(false) }
 
@@ -116,188 +134,199 @@ fun HorarioScreen(
             }
         }
     ) { paddingValues ->
-        Column(
+        // CONTENIDO EN UN BOX PARA EL EFECTO SWIPE TO REFRESH
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF8F9FA))
                 .padding(paddingValues)
+                .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
 
-            // CABECERA DEL CALENDARIO
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { fechaSeleccionada = fechaSeleccionada.minusWeeks(1) }) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Semana anterior")
+                // CABECERA DEL CALENDARIO
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { fechaSeleccionada = fechaSeleccionada.minusWeeks(1) }) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Semana anterior")
+                    }
+
+                    Text(
+                        text = fechaSeleccionada.format(mesAñoFormatter).replaceFirstChar { it.uppercase() },
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+
+                    IconButton(onClick = { fechaSeleccionada = fechaSeleccionada.plusWeeks(1) }) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Semana siguiente")
+                    }
                 }
 
-                Text(
-                    text = fechaSeleccionada.format(mesAñoFormatter).replaceFirstChar { it.uppercase() },
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
+                // SELECTOR DE DÍAS
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val nombresDias = listOf("L", "M", "X", "J", "V")
 
-                IconButton(onClick = { fechaSeleccionada = fechaSeleccionada.plusWeeks(1) }) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Semana siguiente")
-                }
-            }
+                    diasDeLaSemana.forEachIndexed { index, fecha ->
+                        val esSeleccionado = fecha == fechaSeleccionada
+                        val esHoy = fecha == LocalDate.now()
 
-            // SELECTOR DE DÍAS
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                val nombresDias = listOf("L", "M", "X", "J", "V")
-
-                diasDeLaSemana.forEachIndexed { index, fecha ->
-                    val esSeleccionado = fecha == fechaSeleccionada
-                    val esHoy = fecha == LocalDate.now()
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clickable { fechaSeleccionada = fecha }
-                            .padding(8.dp)
-                    ) {
-                        Text(
-                            text = nombresDias[index],
-                            fontWeight = FontWeight.Normal,
-                            color = Color.Gray,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Box(
-                            contentAlignment = Alignment.Center,
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    when {
-                                        esSeleccionado -> Color(0xFF6200EE)
-                                        esHoy -> Color(0xFFE0E0E0)
-                                        else -> Color.Transparent
-                                    }
-                                )
+                                .clickable { fechaSeleccionada = fecha }
+                                .padding(8.dp)
                         ) {
                             Text(
-                                text = fecha.dayOfMonth.toString(),
-                                fontWeight = if (esSeleccionado || esHoy) FontWeight.Bold else FontWeight.Normal,
-                                color = if (esSeleccionado) Color.White else Color.Black,
-                                fontSize = 16.sp
+                                text = nombresDias[index],
+                                fontWeight = FontWeight.Normal,
+                                color = Color.Gray,
+                                fontSize = 14.sp
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            esSeleccionado -> Color(0xFF6200EE)
+                                            esHoy -> Color(0xFFE0E0E0)
+                                            else -> Color.Transparent
+                                        }
+                                    )
+                            ) {
+                                Text(
+                                    text = fecha.dayOfMonth.toString(),
+                                    fontWeight = if (esSeleccionado || esHoy) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (esSeleccionado) Color.White else Color.Black,
+                                    fontSize = 16.sp
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // LÍNEA DE TIEMPO
-            if (cargando) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                // (Ya no declaramos la fecha aquí porque la hemos subido arriba)
-                val diaSemanaSeleccionadoInt = fechaSeleccionada.dayOfWeek.value
-                val mesActual = fechaSeleccionada.monthValue
-                val cuatrimestreActual = when (mesActual) {
-                    9, 10, 11, 12, 1 -> 1
-                    2, 3, 4, 5, 6, 7 -> 2
-                    else -> 0
-                }
-
-                val clasesDelDia = horarioCompleto.filter { clase ->
-                    if (clase.fechaEspecifica != null) {
-                        clase.fechaEspecifica == fechaSeleccionadaTexto
-                    } else {
-                        val esElDiaCorrecto = clase.diaSemana == diaSemanaSeleccionadoInt
-                        val esDelCuatrimestre = clase.asignaturaId.cuatrimestre == cuatrimestreActual
-                        esElDiaCorrecto && esDelCuatrimestre
-                    }
-                }
-
-                if (cuatrimestreActual == 0) {
+                // LÍNEA DE TIEMPO
+                if (cargando) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("¡Vacaciones de verano! 🏖️", color = Color.Gray, fontSize = 18.sp)
-                    }
-                } else if (diaSemanaSeleccionadoInt > 5) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("¡Es fin de semana! A descansar 🛋️", color = Color.Gray)
-                    }
-                } else if (clasesDelDia.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No tienes clases este día 🎉", color = Color.Gray)
+                        CircularProgressIndicator()
                     }
                 } else {
-                    val gruposSolapados = agruparClasesSolapadas(clasesDelDia)
+                    val diaSemanaSeleccionadoInt = fechaSeleccionada.dayOfWeek.value
+                    val mesActual = fechaSeleccionada.monthValue
+                    val cuatrimestreActual = when (mesActual) {
+                        9, 10, 11, 12, 1 -> 1
+                        2, 3, 4, 5, 6, 7 -> 2
+                        else -> 0
+                    }
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        items(gruposSolapados) { grupo ->
-                            val minInicioMins = grupo.minOf { timeToMinutes(it.horaInicio) }
-                            val dpPorMinuto = 1.3f
+                    val clasesDelDia = horarioCompleto.filter { clase ->
+                        if (clase.fechaEspecifica != null) {
+                            clase.fechaEspecifica == fechaSeleccionadaTexto
+                        } else {
+                            val esElDiaCorrecto = clase.diaSemana == diaSemanaSeleccionadoInt
+                            val esDelCuatrimestre = clase.asignaturaId.cuatrimestre == cuatrimestreActual
+                            esElDiaCorrecto && esDelCuatrimestre
+                        }
+                    }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                grupo.forEach { clase ->
-                                    val inicioMins = timeToMinutes(clase.horaInicio)
-                                    val finMins = timeToMinutes(clase.horaFin)
+                    if (cuatrimestreActual == 0) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("¡Vacaciones de verano! \uD83C\uDFD6️", color = Color.Gray, fontSize = 18.sp)
+                        }
+                    } else if (diaSemanaSeleccionadoInt > 5) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("¡Es fin de semana! A descansar \uD83D\uDECB️", color = Color.Gray)
+                        }
+                    } else if (clasesDelDia.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No tienes clases este día \uD83C\uDF89", color = Color.Gray)
+                        }
+                    } else {
+                        val gruposSolapados = agruparClasesSolapadas(clasesDelDia)
 
-                                    val duracionMins = finMins - inicioMins
-                                    val empujeHaciaAbajoMins = inicioMins - minInicioMins
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            items(gruposSolapados) { grupo ->
+                                val minInicioMins = grupo.minOf { timeToMinutes(it.horaInicio) }
+                                val dpPorMinuto = 1.3f
 
-                                    val modificadorAltura = if (grupo.size == 1) {
-                                        Modifier.height(105.dp)
-                                    } else {
-                                        Modifier.height((duracionMins * dpPorMinuto).dp)
-                                    }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    grupo.forEach { clase ->
+                                        val inicioMins = timeToMinutes(clase.horaInicio)
+                                        val finMins = timeToMinutes(clase.horaFin)
 
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(top = (empujeHaciaAbajoMins * dpPorMinuto).dp)
-                                            .then(modificadorAltura)
-                                    ) {
-                                        ClaseCard(
-                                            clase = clase,
-                                            esProfesor = esProfesor,
-                                            fechaActualTexto = fechaSeleccionadaTexto,
-                                            estaSolapada = grupo.size > 1,
-                                            onVerEnMapa = onVerEnMapa,
-                                            onClaseCancelada = { idClase ->
-                                                horarioCompleto = horarioCompleto.map {
-                                                    if (it._id == idClase) {
-                                                        val nuevasFechas = (it.fechasCanceladas ?: emptyList()) + fechaSeleccionadaTexto
-                                                        it.copy(fechasCanceladas = nuevasFechas)
-                                                    } else it
-                                                }
-                                            },
-                                            onClaseRestaurada = { idClase ->
-                                                horarioCompleto = horarioCompleto.map {
-                                                    if (it._id == idClase) {
-                                                        val nuevasFechas = (it.fechasCanceladas ?: emptyList()) - fechaSeleccionadaTexto
-                                                        it.copy(fechasCanceladas = nuevasFechas)
-                                                    } else it
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
+                                        val duracionMins = finMins - inicioMins
+                                        val empujeHaciaAbajoMins = inicioMins - minInicioMins
+
+                                        val modificadorAltura = if (grupo.size == 1) {
+                                            Modifier.height(120.dp)
+                                        } else {
+                                            Modifier.height((duracionMins * dpPorMinuto).dp)
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(top = (empujeHaciaAbajoMins * dpPorMinuto).dp)
+                                                .then(modificadorAltura)
+                                        ) {
+                                            ClaseCard(
+                                                clase = clase,
+                                                esProfesor = esProfesor,
+                                                fechaActualTexto = fechaSeleccionadaTexto,
+                                                estaSolapada = grupo.size > 1,
+                                                onVerEnMapa = onVerEnMapa,
+                                                onClaseCancelada = { idClase ->
+                                                    // Actualizamos la caché en el Repositorio
+                                                    HorarioRepository.marcarClaseCanceladaLocalmente(idClase, fechaSeleccionadaTexto)
+
+                                                    // Actualizamos la lista local de la vista
+                                                    horarioCompleto = horarioCompleto.map {
+                                                        if (it._id == idClase) {
+                                                            val nuevasFechas = (it.fechasCanceladas ?: emptyList()) + fechaSeleccionadaTexto
+                                                            it.copy(fechasCanceladas = nuevasFechas)
+                                                        } else it
+                                                    }
+                                                },
+                                                onClaseRestaurada = { idClase ->
+                                                    // Actualizamos la caché en el Repositorio
+                                                    HorarioRepository.restaurarClaseLocalmente(idClase, fechaSeleccionadaTexto)
+
+                                                    // Actualizamos la lista local de la vista
+                                                    horarioCompleto = horarioCompleto.map {
+                                                        if (it._id == idClase) {
+                                                            val nuevasFechas = (it.fechasCanceladas ?: emptyList()) - fechaSeleccionadaTexto
+                                                            it.copy(fechasCanceladas = nuevasFechas)
+                                                        } else it
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -305,6 +334,11 @@ fun HorarioScreen(
                     }
                 }
             }
+
+            PullToRefreshContainer(
+                state = pullToRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 
@@ -330,6 +364,8 @@ fun HorarioScreen(
             onDismiss = { mostrarFormularioCrear = false },
             onClaseCreada = { nuevaClase ->
                 horarioCompleto = horarioCompleto + nuevaClase
+                // Al crear una clase nueva, invalidamos la caché para que el resto de la app se entere
+                HorarioRepository.limpiarCache()
                 mostrarFormularioCrear = false
                 aulaSeleccionadaNodo = ""
                 aulaSeleccionadaNombre = ""
@@ -338,14 +374,10 @@ fun HorarioScreen(
     }
 }
 
-suspend fun cargarHorario(usuarioId: String, esProfesor: Boolean, onResult: (List<SesionRespuesta>) -> Unit) {
-    try {
-        val horario = /*if (esProfesor) {
-            RetrofitClient.apiService.getHorarioProfesor(usuarioId)
-        } else {
-            RetrofitClient.apiService.getHorarioAlumno(usuarioId)
-        }*/ RetrofitClient.apiService.getHorario(usuarioId)
 
+suspend fun cargarHorario(usuarioId: String, forzarRecarga: Boolean, onResult: (List<SesionRespuesta>) -> Unit) {
+    try {
+        val horario = HorarioRepository.getHorario(usuarioId, forzarRecarga)
         onResult(horario)
     } catch (e: Exception) {
         Log.e("HORARIO", "Error: ${e.message}")
@@ -397,7 +429,7 @@ fun ClaseCard(
     estaSolapada: Boolean = false,
     onVerEnMapa: (String, String) -> Unit,
     onClaseCancelada: (String) -> Unit,
-    onClaseRestaurada: (String) -> Unit, // <-- ¡NUEVO PARÁMETRO!
+    onClaseRestaurada: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // 1. Verificamos si esta clase está cancelada hoy
@@ -471,8 +503,8 @@ fun ClaseCard(
                                     .clickable {
                                         coroutineScope.launch {
                                             try {
-                                                RetrofitClient.apiService.restaurarClase(clase._id, CancelarClaseRequest(fechaActualTexto))
-                                                onClaseRestaurada(clase._id) // La quitamos del array local
+                                                RetrofitClient.horarioService.restaurarClase(clase._id, CancelarClaseRequest(fechaActualTexto))
+                                                onClaseRestaurada(clase._id)
                                             } catch (e: Exception) {
                                                 Log.e("API", "Error al restaurar: ${e.message}")
                                             }
@@ -504,7 +536,7 @@ fun ClaseCard(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    // BOTÓN DE MAPA (Solo se puede ir al mapa si la clase NO está cancelada)
+                    // BOTÓN DE MAPA
                     if (!estaCancelada) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -526,9 +558,6 @@ fun ClaseCard(
         }
     }
 
-    // ==========================================
-    // DIÁLOGO DE CONFIRMACIÓN
-    // ==========================================
     if (mostrarDialogoConfirmacion) {
         val coroutineScope = rememberCoroutineScope()
         AlertDialog(
@@ -542,11 +571,10 @@ fun ClaseCard(
                     onClick = {
                         coroutineScope.launch {
                             try {
-                                Log.d("FECHA", "FECHA: ${fechaActualTexto}")
-                                RetrofitClient.apiService.cancelarClase(clase._id, CancelarClaseRequest(fechaActualTexto))
-                                // 2. Ocultamos el diálogo
+                                RetrofitClient.horarioService.cancelarClase(clase._id,
+                                    CancelarClaseRequest(fechaActualTexto)
+                                )
                                 mostrarDialogoConfirmacion = false
-                                // 3. Avisamos a la pantalla para que la oculte
                                 onClaseCancelada(clase._id)
                             } catch (e: Exception) {
                                 Log.e("API", "Error al cancelar: ${e.message}")
@@ -727,7 +755,7 @@ fun DialogoCrearClase(
                                 grupo = grupo,
                                 fechaEspecifica = if (esClaseUnica) fechaActual else null
                             )
-                            val nuevaClase = RetrofitClient.apiService.crearClase(request)
+                            val nuevaClase = RetrofitClient.horarioService.crearClase(request)
                             onClaseCreada(nuevaClase)
                         } catch (e: Exception) {
                             android.util.Log.e("API_CREAR", "Error: ${e.message}")
@@ -749,36 +777,25 @@ fun DialogoCrearClase(
 
 fun getColorForAsignatura(nombre: String): String {
     when (nombre) {
-        // --- 1º Cuatrimestre ---
-        "Organización Empresarial" -> return "#D32F2F" // Rojo fuerte
-        "Fundamentos Físicos de la Informática" -> return "#1976D2" // Azul
-        "Fundamentos de Electrónica" -> return "#388E3C" // Verde
-        "Introducción a la Programación" -> return "#F57C00" // Naranja
-        "Matemática Discreta" -> return "#7B1FA2" // Morado
+        "Organización Empresarial" -> return "#D32F2F"
+        "Fundamentos Físicos de la Informática" -> return "#1976D2"
+        "Fundamentos de Electrónica" -> return "#388E3C"
+        "Introducción a la Programación" -> return "#F57C00"
+        "Matemática Discreta" -> return "#7B1FA2"
 
-        // --- 2º Cuatrimestre (¡Nuevos colores!) ---
-        "Cálculo para la Computación" -> return "#303F9F" // Índigo / Azul oscuro
-        "Introducción a la Ingeniería del Software" -> return "#C2185B" // Rosa fuerte / Magenta
-        "Tecnología de Computadores" -> return "#00796B" // Verde azulado oscuro (Teal)
-        "Programacion Avanzada I" -> return "#E64A19" // Naranja óxido / Caldera
-        "Estructuras Algebraicas" -> return "#7B1FA2" // Morado
+        "Cálculo para la Computación" -> return "#303F9F"
+        "Introducción a la Ingeniería del Software" -> return "#C2185B"
+        "Tecnología de Computadores" -> return "#00796B"
+        "Programacion Avanzada I" -> return "#E64A19"
+        "Estructuras Algebraicas" -> return "#7B1FA2"
 
-        // --- Otros ---
-        "Sistemas Operativos" -> return "#00838F" // Cian oscuro
+        "Sistemas Operativos" -> return "#00838F"
     }
 
-
     val coloresReserva = listOf(
-        "#0288D1", // Azul claro vibrante
-        "#D81B60", // Fucsia
-        "#00897B", // Esmeralda
-        "#FBC02D", // Mostaza brillante
-        "#8E24AA", // Violeta
-        "#7CB342"  // Verde manzana oscuro
+        "#0288D1", "#D81B60", "#00897B", "#FBC02D", "#8E24AA", "#7CB342"
     )
 
-    // Una fórmula diferente: multiplicamos la primera letra, la última y la longitud
     val calculo = (nombre.first().code + nombre.last().code + nombre.length) * 17
-
     return coloresReserva[kotlin.math.abs(calculo) % coloresReserva.size]
 }

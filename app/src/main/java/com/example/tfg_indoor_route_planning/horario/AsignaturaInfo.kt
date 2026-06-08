@@ -6,5 +6,6 @@ data class AsignaturaInfo(
     val curso: Int? = null,
     val cuatrimestre: Int,
     val facultadId: String,
-    val grupos: List<String>? = emptyList()
+    val grupos: List<String>? = emptyList(),
+    val titulacion: String
 )

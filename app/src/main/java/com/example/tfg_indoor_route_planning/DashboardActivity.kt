@@ -14,8 +14,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -24,7 +27,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,15 +41,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.tfg_indoor_route_planning.api.PoiFavorito
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
-import com.example.tfg_indoor_route_planning.repository.HorarioRepository
-import com.example.tfg_indoor_route_planning.repository.MapaRepository
-import com.example.tfg_indoor_route_planning.repository.UsuarioRepository
+import com.example.tfg_indoor_route_planning.api.dto.CambiarPasswordRequest
+import com.example.tfg_indoor_route_planning.api.dto.PoiFavorito
+import com.example.tfg_indoor_route_planning.repositories.HorarioRepository
+import com.example.tfg_indoor_route_planning.repositories.MapaRepository
+import com.example.tfg_indoor_route_planning.repositories.UsuarioRepository
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -51,6 +62,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
+import kotlin.collections.find
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -187,16 +199,6 @@ fun DashboardScreen(
                     onClick = onNavigateToMapa
                 )
 
-                if (rolUsuario != "PROFESOR") {
-                    DashboardCardWide(
-                        title = "Mis Asignaturas",
-                        subtitle = "Configura tu matrícula y grupos",
-                        imageResId = R.drawable.book, // O el icono que le pusieras
-                        enabled = !UserSession.esInvitado,
-                        onClick = onNavigateToMatricula
-                    )
-                }
-
                 DashboardCardWide(
                     title = "Mi Horario",
                     subtitle = "Gestiona tus clases de hoy",
@@ -204,6 +206,16 @@ fun DashboardScreen(
                     enabled = !UserSession.esInvitado,
                     onClick = onNavigateToHorario
                 )
+
+                if (rolUsuario != "PROFESOR") {
+                    DashboardCardWide(
+                        title = "Mis Asignaturas",
+                        subtitle = "Configura tu matrícula y grupos",
+                        imageResId = R.drawable.book,
+                        enabled = !UserSession.esInvitado,
+                        onClick = onNavigateToMatricula
+                    )
+                }
 
                 DashboardCardWide(
                     title = "Noticias UMA",
@@ -249,11 +261,14 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
     val nombreUsuario = UserSession.nombre.ifBlank { "Usuario" }
     val niuUsuario = UserSession.usuarioId.ifBlank { "Sin identificar" }
 
+    val scrollState = rememberScrollState()
+
     var urlFotoActual by remember { mutableStateOf(UserSession.fotoUrl ?: "") }
     var isLoadingFoto by remember { mutableStateOf(false) }
-    var rutasAccesibles by remember { mutableStateOf(false) }
+    var rutasAccesibles by remember { mutableStateOf(UserSession.rutasAccesibles) }
 
     var expandFavoritos by remember { mutableStateOf(false) }
+    var mostrarDialogoPassword by remember { mutableStateOf(false) }
 
     var listaFavoritos by remember { mutableStateOf<List<PoiFavorito>>(emptyList()) }
     var isLoadingFavoritos by remember { mutableStateOf(false) }
@@ -263,7 +278,7 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
         if (!UserSession.esInvitado) {
             isLoadingFavoritos = true
             try {
-                val usuarioInfo = RetrofitClient.apiService.getUsuario(UserSession.usuarioId)
+                val usuarioInfo = UsuarioRepository.getUsuario(UserSession.usuarioId)
                 listaFavoritos = usuarioInfo.poisFavoritos
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -287,13 +302,14 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                         val requestFile = tempFile.asRequestBody("image/*".toMediaTypeOrNull())
                         val body = MultipartBody.Part.createFormData("foto", tempFile.name, requestFile)
 
-                        val response = RetrofitClient.apiService.subirFotoPerfil(UserSession.token, body)
+                        val response = RetrofitClient.usuarioService.subirFotoPerfil(UserSession.token, body)
 
                         if (response.isSuccessful) {
                             val nuevaUrl = response.body()?.url ?: ""
                             UserSession.actualizarFotoUrl(context, nuevaUrl)
                             urlFotoActual = nuevaUrl
                             Toast.makeText(context, "✅ Foto actualizada", Toast.LENGTH_SHORT).show()
+                            UsuarioRepository.invalidarCache()
                         } else {
                             val codigoError = response.code()
                             val cuerpoError = response.errorBody()?.string() ?: "Sin detalles"
@@ -316,7 +332,8 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // AVATAR GRANDE
@@ -388,7 +405,6 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                     Text("Mis Sitios Favoritos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text("Aulas y laboratorios guardados", color = Color.Gray, fontSize = 13.sp)
                 }
-                // Cambiamos el icono dependiendo de si está expandido o no
                 Icon(
                     imageVector = if (expandFavoritos) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
@@ -421,7 +437,7 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                                     .clickable {
                                         coroutineScope.launch {
                                             try {
-                                                val mapas = RetrofitClient.apiService.getTodosLosMapas()
+                                                val mapas = MapaRepository.getTodosLosMapas()
                                                 val mapaDestino = mapas.find { it.nombre == favorito.facultad }
 
                                                 if (mapaDestino != null) {
@@ -444,49 +460,19 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 14.dp) // Ajustamos un poco el padding al quitar el icono
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)
                                 ) {
-                                    // 1. Textos principales (ahora alineados a la izquierda directamente)
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = favorito.nombrePoi,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.Black,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Text(favorito.nombrePoi, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            // Mantenemos el iconito de ciudad porque da buen contexto
-                                            Icon(
-                                                imageVector = Icons.Default.LocationCity,
-                                                contentDescription = null,
-                                                tint = Color.Gray,
-                                                modifier = Modifier.size(14.dp)
-                                            )
+                                            Icon(Icons.Default.LocationCity, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = favorito.facultad,
-                                                fontSize = 13.sp,
-                                                color = Color.Gray,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            Text(favorito.facultad, fontSize = 13.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
-
                                     Spacer(modifier = Modifier.width(8.dp))
-
-                                    // 2. Flecha indicadora de acción
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                        contentDescription = "Ir al mapa",
-                                        tint = Color(0xFFE0E0E0),
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Ir al mapa", tint = Color(0xFFE0E0E0), modifier = Modifier.size(24.dp))
                                 }
                             }
                         }
@@ -497,7 +483,38 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
 
         Divider(color = Color(0xFFEEEEEE))
 
+        // ==========================================
+        // Cambiar Contraseña
+        // ==========================================
+        if (!UserSession.esInvitado) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { mostrarDialogoPassword = true }
+                    .padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF4CAF50))
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Seguridad", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Cambiar contraseña de acceso", color = Color.Gray, fontSize = 13.sp)
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color.LightGray
+                )
+            }
+
+            Divider(color = Color(0xFFEEEEEE))
+        }
+
+        // ==========================================
         // OPCIÓN: Accesibilidad
+        // ==========================================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -514,8 +531,22 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
             }
             Switch(
                 checked = rutasAccesibles,
-                onCheckedChange = { rutasAccesibles = it },
-                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF6200EE), checkedTrackColor = Color(0xFF6200EE).copy(alpha = 0.5f))
+                onCheckedChange = { nuevoValor ->
+                    rutasAccesibles = nuevoValor
+
+                    coroutineScope.launch {
+                        val exito = UsuarioRepository.cambiarAccesibilidadServidor(context, UserSession.usuarioId, nuevoValor)
+                        if (!exito) {
+                            // Si falla internet, revertimos el interruptor y avisamos
+                            rutasAccesibles = !nuevoValor
+                            Toast.makeText(context, "Error al sincronizar con el servidor", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFF6200EE),
+                    checkedTrackColor = Color(0xFF6200EE).copy(alpha = 0.5f)
+                )
             )
         }
 
@@ -537,6 +568,152 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+
+    // ==========================================
+    // INVOCACIÓN DEL DIÁLOGO DE CONTRASEÑA
+    // ==========================================
+    if (mostrarDialogoPassword) {
+        DialogoCambiarPassword(
+            onDismiss = { mostrarDialogoPassword = false }
+        )
+    }
+}
+
+// ==========================================================
+// DIÁLOGO DE CAMBIO DE CONTRASEÑA
+// ==========================================================
+@Composable
+fun DialogoCambiarPassword(onDismiss: () -> Unit) {
+    var passAntigua by remember { mutableStateOf("") }
+    var passNueva by remember { mutableStateOf("") }
+    var passRepetida by remember { mutableStateOf("") }
+    var passAntiguaVisible by remember { mutableStateOf(false) }
+    var passNuevaVisible by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Cambiar Contraseña", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Por seguridad, introduce tu contraseña actual y la nueva que deseas utilizar.",
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Input: Contraseña Actual
+                OutlinedTextField(
+                    value = passAntigua,
+                    onValueChange = { passAntigua = it },
+                    label = { Text("Contraseña actual") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    visualTransformation = if (passAntiguaVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                    trailingIcon = {
+                        val image = if (passAntiguaVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                        IconButton(onClick = { passAntiguaVisible = !passAntiguaVisible }) {
+                            Icon(imageVector = image, contentDescription = null, tint = Color.Gray)
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Input: Nueva Contraseña
+                OutlinedTextField(
+                    value = passNueva,
+                    onValueChange = { passNueva = it },
+                    label = { Text("Nueva contraseña") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    visualTransformation = if (passNuevaVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                    trailingIcon = {
+                        val image = if (passNuevaVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                        IconButton(onClick = { passNuevaVisible = !passNuevaVisible }) {
+                            Icon(imageVector = image, contentDescription = null, tint = Color.Gray)
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Input: Repetir Nueva Contraseña
+                OutlinedTextField(
+                    value = passRepetida,
+                    onValueChange = { passRepetida = it },
+                    label = { Text("Repite nueva contraseña") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    visualTransformation = if (passNuevaVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    isError = passNueva.isNotEmpty() && passRepetida.isNotEmpty() && passNueva != passRepetida
+                )
+                if (passNueva.isNotEmpty() && passRepetida.isNotEmpty() && passNueva != passRepetida) {
+                    Text(
+                        text = "Las contraseñas no coinciden",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (passAntigua.isBlank() || passNueva.isBlank() || passNueva != passRepetida) return@Button
+
+                    isLoading = true
+                    coroutineScope.launch {
+                        try {
+
+                            val request = CambiarPasswordRequest(passAntigua, passNueva)
+                            val response = RetrofitClient.authService.cambiarPassword(UserSession.token, UserSession.usuarioId, request)
+                            if (response.isSuccessful) {
+                                Toast.makeText(context, "Contraseña actualizada correctamente", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            } else {
+                                Toast.makeText(context, "La contraseña actual es incorrecta", Toast.LENGTH_SHORT).show()
+                            }
+
+                            // Simulación temporal para que no falle al compilar:
+                            kotlinx.coroutines.delay(1000)
+                            Toast.makeText(context, "Conecta esta función a la API", Toast.LENGTH_LONG).show()
+                            onDismiss()
+
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
+                enabled = !isLoading && passAntigua.isNotBlank() && passNueva.isNotBlank() && passNueva == passRepetida,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE))
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Actualizar", color = Color.White)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Cancelar", color = Color.Gray)
+            }
+        }
+    )
 }
 
 // ==========================================================

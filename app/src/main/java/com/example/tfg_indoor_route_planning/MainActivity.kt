@@ -30,14 +30,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -59,11 +60,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
-import com.example.tfg_indoor_route_planning.api.FavoritosRequest
-import com.example.tfg_indoor_route_planning.api.MapApiService
-import com.example.tfg_indoor_route_planning.api.MapaResumen
-import com.example.tfg_indoor_route_planning.api.PoiFavorito
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.FavoritosRequest
+import com.example.tfg_indoor_route_planning.api.dto.MapaResumen
+import com.example.tfg_indoor_route_planning.api.dto.PoiFavorito
 import com.example.tfg_indoor_route_planning.logic.CompassEngine
 import com.example.tfg_indoor_route_planning.logic.GraphEngine
 import com.example.tfg_indoor_route_planning.logic.NavigationHelper
@@ -74,6 +74,8 @@ import com.example.tfg_indoor_route_planning.models.Node
 import com.example.tfg_indoor_route_planning.models.POI
 import com.example.tfg_indoor_route_planning.models.PointMeters
 import com.example.tfg_indoor_route_planning.models.obtenerEstiloPoi
+import com.example.tfg_indoor_route_planning.repositories.MapaRepository
+import com.example.tfg_indoor_route_planning.repositories.UsuarioRepository
 import com.example.tfg_indoor_route_planning.ui.BuscadorDestino
 import com.example.tfg_indoor_route_planning.ui.ControlesNavegacion
 import com.example.tfg_indoor_route_planning.ui.HojaGuardadosBottomSheet
@@ -214,11 +216,14 @@ class MainActivity : ComponentActivity() {
 
             var vozActivada by remember { mutableStateOf(true) }
 
+            val pullRefreshState = rememberPullToRefreshState()
+            val coroutineScope = rememberCoroutineScope()
+
             LaunchedEffect(Unit) {
                 if (!UserSession.esInvitado) {
                     val idUsuarioActual = UserSession.usuarioId
                     try {
-                        val usuario = RetrofitClient.apiService.getUsuario(idUsuarioActual)
+                        val usuario = UsuarioRepository.getUsuario(idUsuarioActual)
                         // Convertimos la List del servidor al Set que usa la interfaz
                         listaFavoritos = usuario.poisFavoritos
                         Log.d("FAVORITOS", "Cargados ${listaFavoritosIds.size} favoritos de la base de datos")
@@ -267,12 +272,13 @@ class MainActivity : ComponentActivity() {
                     lifecycleScope.launch {
                         try {
                             val request = FavoritosRequest(favoritos = nuevaLista)
-                            val response = RetrofitClient.apiService.actualizarFavoritos(idUsuarioActual, request)
+                            val response = RetrofitClient.usuarioService.actualizarFavoritos(idUsuarioActual, request)
 
                             if (!response.isSuccessful) {
                                 Log.e("FAVORITOS", "Error al guardar en BD: ${response.code()}")
                             } else {
                                 Log.d("FAVORITOS", "Favoritos sincronizados correctamente con MongoDB")
+                                UsuarioRepository.limpiarCache()
                             }
                         } catch (e: Exception) {
                             Log.e("FAVORITOS", "Excepción al guardar favoritos", e)
@@ -334,7 +340,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     try {
                         cargandoLista = true
-                        listaMapas = RetrofitClient.apiService.getTodosLosMapas()
+                        listaMapas = MapaRepository.getTodosLosMapas()
                         cargandoLista = false
                     } catch (e: Exception) {
                         Log.e("RED", "Error al bajar la lista: ${e.message}")
@@ -380,20 +386,44 @@ class MainActivity : ComponentActivity() {
                     if (mapaAbiertoId == null) {
                         if (cargandoLista) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator() // Ruedita de carga
+                                CircularProgressIndicator()
                             }
                         } else {
-                            PantallaListaFacultades(
-                                lista = listaMapas,
-                                onFacultadClick = { idSeleccionado ->
-                                    isLoading = true
-                                    mapaAbiertoId = idSeleccionado
-                                    cargarDatosDesdeServidor(idSeleccionado) // Inicia descarga pesada
-                                },
-                                onBackClick = {
-                                    finish() // Cerramos el mapa
+                            Box(modifier = Modifier
+                                .fillMaxSize()
+                                .nestedScroll(pullRefreshState.nestedScrollConnection)
+                            ) {
+
+                                PantallaListaFacultades(
+                                    lista = listaMapas,
+                                    onFacultadClick = { idSeleccionado ->
+                                        isLoading = true
+                                        mapaAbiertoId = idSeleccionado
+                                        cargarDatosDesdeServidor(idSeleccionado)
+                                    },
+                                    onBackClick = { finish() }
+                                )
+
+                                PullToRefreshContainer(
+                                    state = pullRefreshState,
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                    containerColor = Color.White,
+                                    contentColor = Color(0xFF6200EE)
+                                )
+                            }
+
+                            if (pullRefreshState.isRefreshing) {
+                                LaunchedEffect(true) {
+                                    try {
+                                        MapaRepository.limpiarCache()
+                                        listaMapas = MapaRepository.getTodosLosMapas(forzarRecarga = true)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error al actualizar", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        pullRefreshState.endRefresh()
+                                    }
                                 }
-                            )
+                            }
                         }
                     }
                     // =========================================================
@@ -985,7 +1015,7 @@ class MainActivity : ComponentActivity() {
         devices.clear()
         lifecycleScope.launch {
             try {
-                mapaDescargado = RetrofitClient.apiService.getMapa(idSeleccionado)
+                mapaDescargado = MapaRepository.getMapa(idSeleccionado)
 
                 // 2. Protegemos el acceso con '?.let' para asegurarnos de que el mapa no es nulo
                 mapaDescargado?.let { mapa ->
@@ -1042,12 +1072,11 @@ class MainActivity : ComponentActivity() {
             // Cambiamos la imagen de fondo
             planoFondo = base64ToImageBitmap(planta.imagenBase64)
 
-            devices.clear()
-            currentSmoothedPosition = null
-            lastDrawnPosition = null
-
             // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
             if (rutaCalculada.isEmpty()) {
+                devices.clear()
+                currentSmoothedPosition = null
+                lastDrawnPosition = null
 
                 currentUserNode = null
                 userPosition = null

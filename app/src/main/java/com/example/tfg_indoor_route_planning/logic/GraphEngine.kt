@@ -150,7 +150,13 @@ class GraphEngine(private val nodesList: List<Node>) {
     // Distancia Euclidiana (Línea recta) entre dos nodos
     private fun calculateDistance(nodeA: Node, nodeB: Node): Float {
         if (nodeA.plantaId != nodeB.plantaId) {
-            return 5.0f // Coste fijo (ej: 5 metros) por subir/bajar escaleras
+            if (UserSession.rutasAccesibles) {
+
+                if (nodeA.tipo == "ESCALERA" || nodeB.tipo == "ESCALERA") {
+                    return Float.POSITIVE_INFINITY // Prohibido pasar por aquí
+                }
+            }
+            return 5.0f //subir/bajar escaleras
         }
         val dx = nodeA.position.x - nodeB.position.x
         val dy = nodeA.position.y - nodeB.position.y

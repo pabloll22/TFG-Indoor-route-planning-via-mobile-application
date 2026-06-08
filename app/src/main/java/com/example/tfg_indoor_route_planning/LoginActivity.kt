@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -28,8 +29,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tfg_indoor_route_planning.api.LoginRequest
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.LoginRequest
 import kotlinx.coroutines.launch
 
 class LoginActivity : ComponentActivity() {
@@ -59,6 +60,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var passwordInput by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+
+    var mostrarDialogoRecuperacion by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -133,7 +136,24 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    // BOTÓN DE OLVIDÉ MI CONTRASEÑA
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        TextButton(
+                            onClick = { mostrarDialogoRecuperacion = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                        ) {
+                            Text(
+                                text = "¿Has olvidado tu contraseña?",
+                                color = Color(0xFF6200EE),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
 
                     // BOTÓN PRINCIPAL
                     Button(
@@ -142,8 +162,11 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                             isLoading = true
                             coroutineScope.launch {
                                 try {
-                                    val request = LoginRequest(idUsuario = idInput.trim(), password = passwordInput.trim())
-                                    val authResponse = RetrofitClient.apiService.loginUsuario(request)
+                                    val request = LoginRequest(
+                                        idUsuario = idInput.trim(),
+                                        password = passwordInput.trim()
+                                    )
+                                    val authResponse = RetrofitClient.authService.loginUsuario(request)
                                     android.util.Log.d("TFG_LOGIN", "URL de la foto recibida: '${authResponse.usuario.foto_url}'")
                                     UserSession.iniciarSesion(
                                         context = context,
@@ -151,7 +174,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                         nombreUsuario = authResponse.usuario.nombre,
                                         rolUsuario = authResponse.usuario.rol,
                                         jwtToken = authResponse.token,
-                                        urlFoto = authResponse.usuario.foto_url ?: ""
+                                        urlFoto = authResponse.usuario.foto_url ?: "",
+                                        accesible = authResponse.usuario.rutasAccesibles
                                     )
                                     isLoading = false
                                     onLoginSuccess()
@@ -210,5 +234,36 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 Text(text = "Regístrate aquí", color = Color(0xFF6200EE), fontWeight = FontWeight.Bold)
             }
         }
+    }
+
+    if (mostrarDialogoRecuperacion) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoRecuperacion = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Información",
+                    tint = Color(0xFF6200EE)
+                )
+            },
+            title = {
+                Text(text = "Recuperación de cuenta")
+            },
+            text = {
+                Text(
+                    text = "Por motivos de seguridad institucional de la UMA, el restablecimiento automático de contraseñas está desactivado.\n\nPor favor, contacta con la secretaría de tu facultad o el administrador del sistema para generar unas nuevas credenciales de acceso.",
+                    color = Color.DarkGray,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { mostrarDialogoRecuperacion = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE))
+                ) {
+                    Text("Entendido", color = Color.White)
+                }
+            }
+        )
     }
 }

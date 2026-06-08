@@ -1,23 +1,31 @@
-package com.example.tfg_indoor_route_planning.repository
+package com.example.tfg_indoor_route_planning.repositories
 
-import com.example.tfg_indoor_route_planning.api.MapaResumen
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.MapaResumen
 import com.example.tfg_indoor_route_planning.models.Mapa
 
 object MapaRepository {
 
     private var mapasResumenCache: List<MapaResumen>? = null
+    private var mapasResumenCacheTime: Long = 0L
 
     private var mapasDetalleCache: MutableMap<String, Mapa> = mutableMapOf()
     private var mapasDetalleCacheTime: MutableMap<String, Long> = mutableMapOf()
-    private const val TIEMPO_CADUCIDAD_MAPA = 300_000L // 5 minutos
+
+    // 3 horas en milisegundos (3 * 60 * 60 * 1000)
+    private const val TIEMPO_CADUCIDAD_MAPA = 3_600_000L // 3 horas
 
     suspend fun getTodosLosMapas(forzarRecarga: Boolean = false): List<MapaResumen> {
-        if (!forzarRecarga && mapasResumenCache != null) {
+        val tiempoActual = System.currentTimeMillis()
+        val estaVigente = (tiempoActual - mapasResumenCacheTime) < TIEMPO_CADUCIDAD_MAPA
+
+        if (!forzarRecarga && estaVigente && mapasResumenCache != null) {
             return mapasResumenCache!!
         }
-        val response = RetrofitClient.apiService.getTodosLosMapas()
+
+        val response = RetrofitClient.mapaService.getTodosLosMapas()
         mapasResumenCache = response
+        mapasResumenCacheTime = tiempoActual
         return response
     }
 
@@ -30,7 +38,7 @@ object MapaRepository {
             return mapasDetalleCache[id]!!
         }
 
-        val response = RetrofitClient.apiService.getMapa(id)
+        val response = RetrofitClient.mapaService.getMapa(id)
         mapasDetalleCache[id] = response
         mapasDetalleCacheTime[id] = tiempoActual
         return response

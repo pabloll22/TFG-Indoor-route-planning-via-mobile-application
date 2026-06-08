@@ -3,6 +3,7 @@ package com.example.tfg_indoor_route_planning.logic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Elevator
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Stairs
 import androidx.compose.material.icons.filled.Straight
@@ -37,14 +38,21 @@ object NavigationHelper {
             ).toInt()
 
             if (current.plantaId != next.plantaId) {
-                val direccion = if ((next.plantaId?.lastOrNull()?.digitToInt() ?: 0) >
-                    (current.plantaId?.lastOrNull()?.digitToInt() ?: 0))
+                // Averiguamos si sube o baja comparando el último número del ID de la planta
+                val direccion = if ((next.plantaId.lastOrNull()?.digitToIntOrNull() ?: 0) >
+                    (current.plantaId.lastOrNull()?.digitToIntOrNull() ?: 0))
                     "Sube" else "Baja"
+
+                // Comprobamos si el origen o el destino es un ascensor
+                val esAscensor = current.tipo == "ASCENSOR" || next.tipo == "ASCENSOR"
+
+                val medio = if (esAscensor) "el ascensor" else "las escaleras"
+                val iconInterplanta = if (esAscensor) Icons.Default.Elevator else Icons.Default.Stairs
 
                 instructions.add(
                     NavInstruction(
-                        text = "$direccion por las escaleras a la ${next.plantaId}",
-                        icon = Icons.Default.Stairs,
+                        text = "$direccion por $medio a la planta ${next.plantaId.replace("planta_", "")}",
+                        icon = iconInterplanta,
                         distance = dist
                     )
                 )

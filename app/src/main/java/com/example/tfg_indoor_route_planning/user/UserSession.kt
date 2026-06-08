@@ -7,6 +7,7 @@ object UserSession {
     var rol: String = "ALUMNO"
     var token: String = ""
     var fotoUrl: String = ""
+    var rutasAccesibles: Boolean = false
 
     val esProfesor: Boolean
         get() = rol == "PROFESOR"
@@ -22,17 +23,27 @@ object UserSession {
         rol = prefs.getString("rol", "ALUMNO") ?: "ALUMNO"
         token = prefs.getString("token", "") ?: ""
         fotoUrl = prefs.getString("fotoUrl", "") ?: ""
+        rutasAccesibles = prefs.getBoolean("rutasAccesibles", false)
 
         return usuarioId.isNotEmpty() && token.isNotEmpty()// Devuelve true si hay alguien logueado
     }
 
     // Guarda en memoria y en la sesión actual
-    fun iniciarSesion(context: Context, id: String, nombreUsuario: String, rolUsuario: String, jwtToken: String, urlFoto: String = "") {
+    fun iniciarSesion(
+        context: Context,
+        id: String,
+        nombreUsuario: String,
+        rolUsuario: String,
+        jwtToken: String,
+        urlFoto: String = "",
+        accesible: Boolean = false
+    ) {
         usuarioId = id
         nombre = nombreUsuario
         rol = rolUsuario
         token = jwtToken
         fotoUrl = urlFoto
+        rutasAccesibles = accesible
 
         val prefs = context.getSharedPreferences("ControlUMAPrefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
@@ -41,6 +52,16 @@ object UserSession {
             putString("rol", rolUsuario)
             putString("token", jwtToken)
             putString("fotoUrl", urlFoto)
+            putBoolean("rutasAccesibles", accesible)
+            apply()
+        }
+    }
+
+    fun setRutasAccesibles(context: Context, valor: Boolean) {
+        rutasAccesibles = valor
+        val prefs = context.getSharedPreferences("ControlUMAPrefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putBoolean("rutasAccesibles", valor)
             apply()
         }
     }

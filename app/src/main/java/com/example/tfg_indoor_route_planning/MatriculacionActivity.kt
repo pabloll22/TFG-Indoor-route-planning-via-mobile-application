@@ -24,8 +24,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,9 +41,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tfg_indoor_route_planning.api.MatriculaRequest
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.MatriculaRequest
 import com.example.tfg_indoor_route_planning.horario.AsignaturaInfo
+import com.example.tfg_indoor_route_planning.repositories.HorarioRepository
+import com.example.tfg_indoor_route_planning.repositories.UsuarioRepository
 import kotlinx.coroutines.launch
 
 class MatriculacionActivity : ComponentActivity() {
@@ -65,19 +71,37 @@ fun MatriculacionScreen(onBack: () -> Unit) {
 
     val seleccionadas = remember { mutableStateMapOf<String, String>() }
 
+    // NUEVO: Estado para controlar qué titulaciones están desplegadas
+    val expandedTitulaciones = remember { mutableStateMapOf<String, Boolean>() }
+
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val pullRefreshState = rememberPullToRefreshState()
 
     // 1. CARGA DE DATOS AL ENTRAR
     LaunchedEffect(Unit) {
         try {
-            // Descargamos las asignaturas y garantizamos que no haya repetidas por ID
-            val resAsignaturas = RetrofitClient.apiService.getAsignaturas().distinctBy { it._id }
+            val resAsignaturas = HorarioRepository.getAsignaturas().distinctBy { it._id }
             asignaturas = resAsignaturas.sortedWith(compareBy({ it.curso ?: 99 }, { it.cuatrimestre }))
 
-            // Descargamos el perfil para pre-marcar las que ya tiene
-            val perfilUsuario = RetrofitClient.apiService.getUsuario(UserSession.usuarioId)
+            val perfilUsuario = UsuarioRepository.getUsuario(UserSession.usuarioId)
             perfilUsuario.asignaturasMatriculadas.forEach { matricula ->
                 seleccionadas[matricula.asignaturaId] = matricula.grupo
+            }
+
+            val titulacionesConSeleccion = seleccionadas.keys.mapNotNull { id ->
+                resAsignaturas.find { it._id == id }?.titulacion ?: "Otras Titulaciones"
+            }.toSet()
+
+            val titulacionesUnicas = resAsignaturas.map { it.titulacion ?: "Otras Titulaciones" }.distinct()
+
+            titulacionesUnicas.forEach { tit ->
+                // Abre la titulación si el usuario tiene asignaturas marcadas ahí
+                expandedTitulaciones[tit] = titulacionesConSeleccion.contains(tit)
+            }
+
+            // Si es un alumno nuevo y no tiene nada seleccionado, abrimos la primera por defecto
+            if (titulacionesConSeleccion.isEmpty() && titulacionesUnicas.isNotEmpty()) {
+                expandedTitulaciones[titulacionesUnicas.first()] = true
             }
 
         } catch (e: Exception) {
@@ -98,7 +122,7 @@ fun MatriculacionScreen(onBack: () -> Unit) {
                     MatriculaRequest(asignaturaId = it.key, grupo = it.value)
                 }
 
-                val response = RetrofitClient.apiService.actualizarMatricula(
+                val response = RetrofitClient.horarioService.actualizarMatricula(
                     token = UserSession.token,
                     idUsuario = UserSession.usuarioId,
                     matricula = matriculaRequest
@@ -106,6 +130,8 @@ fun MatriculacionScreen(onBack: () -> Unit) {
 
                 if (response.isSuccessful) {
                     Toast.makeText(context, "Matrícula guardada correctamente", Toast.LENGTH_SHORT).show()
+                    UsuarioRepository.invalidarCache()
+                    HorarioRepository.limpiarCache()
                     onBack()
                 } else {
                     Toast.makeText(context, "Error del servidor al guardar", Toast.LENGTH_SHORT).show()
@@ -120,8 +146,12 @@ fun MatriculacionScreen(onBack: () -> Unit) {
         }
     }
 
-    // Agrupamos para los Sticky Headers
-    val asignaturasAgrupadas = asignaturas.groupBy { it.curso ?: 99 }
+    // 3. AGRUPACIÓN DOBLE
+    val asignaturasPorTitulacionYCurso = asignaturas
+        .groupBy { it.titulacion ?: "Otras Titulaciones" }
+        .mapValues { (_, listaTitulacion) ->
+            listaTitulacion.groupBy { it.curso ?: 99 }
+        }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -184,165 +214,206 @@ fun MatriculacionScreen(onBack: () -> Unit) {
                 Text("Cargando plan de estudios...", color = Color.Gray, fontSize = 14.sp)
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .nestedScroll(pullRefreshState.nestedScrollConnection)
             ) {
-                item {
-                    Text(
-                        text = "Selecciona tus asignaturas e indica a qué grupo asistes para generar tu horario personalizado.",
-                        fontSize = 14.sp,
-                        color = Color.DarkGray,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(bottom = 8.dp, start = 4.dp, end = 4.dp)
-                    )
-                }
-
-                // BUCLE PRINCIPAL DE DIBUJADO
-                asignaturasAgrupadas.forEach { (curso, listaAsignaturas) ->
-
-                    stickyHeader {
-                        val tituloCurso = if (curso == 99) "Asignaturas sin curso" else "Curso $curso º"
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFF8F9FA).copy(alpha = 0.95f))
-                                .padding(vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = tituloCurso.uppercase(),
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF6200EE),
-                                fontSize = 13.sp,
-                                letterSpacing = 1.sp,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-                        }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        Text(
+                            text = "Selecciona tus asignaturas e indica a qué grupo asistes para generar tu horario personalizado.",
+                            fontSize = 14.sp,
+                            color = Color.DarkGray,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp, end = 4.dp)
+                        )
                     }
 
-                    // Previene duplicados visuales en Compose
-                    items(items = listaAsignaturas, key = { it._id }) { asig ->
-                        val isSelected = seleccionadas.containsKey(asig._id)
-                        val grupoSeleccionado = seleccionadas[asig._id] ?: ""
+                    asignaturasPorTitulacionYCurso.forEach { (titulacion, asignaturasPorCurso) ->
 
-                        // Lista real de grupos que provienen del servidor
-                        val gruposDeEstaAsig = if (!asig.grupos.isNullOrEmpty()) asig.grupos else listOf("Sin grupos programados")
+                        val isExpanded = expandedTitulaciones[titulacion] ?: false
 
-                        val borderColor by animateColorAsState(
-                            targetValue = if (isSelected) Color(0xFF6200EE).copy(alpha = 0.5f) else Color(0xFFE0E0E0),
-                            animationSpec = tween(300)
-                        )
-                        val backgroundColor by animateColorAsState(
-                            targetValue = if (isSelected) Color(0xFFF4F0FF) else Color.White,
-                            animationSpec = tween(300)
-                        )
-
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = backgroundColor),
-                            border = BorderStroke(1.dp, borderColor),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable {
-                                    if (isSelected) seleccionadas.remove(asig._id)
-                                    else seleccionadas[asig._id] = gruposDeEstaAsig.first()
-                                }
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .background(if (isSelected) Color(0xFF6200EE) else Color(0xFFF0F0F0), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Book,
-                                            contentDescription = null,
-                                            tint = if (isSelected) Color.White else Color.Gray,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-
-                                    Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                        Text(
-                                            text = asig.nombre,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = if (isSelected) Color.Black else Color.DarkGray,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = "Cuatrimestre ${asig.cuatrimestre}",
-                                            color = Color.Gray,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-
-                                AnimatedVisibility(
-                                    visible = isSelected,
-                                    enter = expandVertically() + fadeIn(),
-                                    exit = shrinkVertically() + fadeOut()
+                        // CABECERA STICKY CLICKABLE (DESPLEGABLE)
+                        stickyHeader {
+                            Surface(
+                                color = Color(0xFFF8F9FA).copy(alpha = 0.95f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { expandedTitulaciones[titulacion] = !isExpanded }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Column(modifier = Modifier.padding(top = 16.dp)) {
-                                        Divider(color = Color(0xFFE0E0E0).copy(alpha = 0.5f))
-                                        Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = titulacion.uppercase(),
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.Black,
+                                        fontSize = 16.sp,
+                                        letterSpacing = 1.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Desplegar",
+                                        tint = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isExpanded) {
+                            asignaturasPorCurso.forEach { (curso, listaAsignaturas) ->
+
+                                item {
+                                    val tituloCurso = if (curso == 99) "Asignaturas optativas / Sin curso" else "Curso $curso º"
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
+                                    ) {
+                                        HorizontalDivider(modifier = Modifier.width(24.dp), color = Color(0xFF6200EE), thickness = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "Selecciona tu grupo de asistencia:",
-                                            fontSize = 12.sp,
-                                            color = Color.Gray,
+                                            text = tituloCurso,
                                             fontWeight = FontWeight.Bold,
-                                            letterSpacing = 0.5.sp
+                                            color = Color(0xFF6200EE),
+                                            fontSize = 14.sp
                                         )
-                                        Spacer(modifier = Modifier.height(10.dp))
+                                    }
+                                }
 
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            gruposDeEstaAsig.forEach { grupo ->
-                                                val isActive = grupo == grupoSeleccionado
+                                items(items = listaAsignaturas, key = { it._id }) { asig ->
+                                    val isSelected = seleccionadas.containsKey(asig._id)
+                                    val grupoSeleccionado = seleccionadas[asig._id] ?: ""
 
-                                                val chipBg by animateColorAsState(targetValue = if (isActive) Color(0xFF6200EE) else Color.White)
-                                                val chipText by animateColorAsState(targetValue = if (isActive) Color.White else Color.DarkGray)
-                                                val chipBorder by animateColorAsState(targetValue = if (isActive) Color(0xFF6200EE) else Color(0xFFE0E0E0))
+                                    val gruposDeEstaAsig = if (!asig.grupos.isNullOrEmpty()) asig.grupos else listOf("Sin grupos programados")
 
-                                                Surface(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = chipBg,
-                                                    border = BorderStroke(1.dp, chipBorder),
-                                                    modifier = Modifier.clickable {
-                                                        if (grupo != "Sin grupos programados") {
-                                                            seleccionadas[asig._id] = grupo
-                                                        }
-                                                    }
+                                    val borderColor by animateColorAsState(
+                                        targetValue = if (isSelected) Color(0xFF6200EE).copy(alpha = 0.5f) else Color(0xFFE0E0E0),
+                                        animationSpec = tween(300)
+                                    )
+                                    val backgroundColor by animateColorAsState(
+                                        targetValue = if (isSelected) Color(0xFFF4F0FF) else Color.White,
+                                        animationSpec = tween(300)
+                                    )
+
+                                    Card(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                                        border = BorderStroke(1.dp, borderColor),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable {
+                                                if (isSelected) seleccionadas.remove(asig._id)
+                                                else seleccionadas[asig._id] = gruposDeEstaAsig.first()
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .background(if (isSelected) Color(0xFF6200EE) else Color(0xFFF0F0F0), CircleShape),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                                    Icon(
+                                                        imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Book,
+                                                        contentDescription = null,
+                                                        tint = if (isSelected) Color.White else Color.Gray,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+
+                                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                                                    Text(
+                                                        text = asig.nombre,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 16.sp,
+                                                        color = if (isSelected) Color.Black else Color.DarkGray,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = "Cuatrimestre ${asig.cuatrimestre}",
+                                                        color = Color.Gray,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+
+                                            AnimatedVisibility(
+                                                visible = isSelected,
+                                                enter = expandVertically() + fadeIn(),
+                                                exit = shrinkVertically() + fadeOut()
+                                            ) {
+                                                Column(modifier = Modifier.padding(top = 16.dp)) {
+                                                    HorizontalDivider(color = Color(0xFFE0E0E0).copy(alpha = 0.5f))
+                                                    Spacer(modifier = Modifier.height(12.dp))
+                                                    Text(
+                                                        text = "Selecciona tu grupo de asistencia:",
+                                                        fontSize = 12.sp,
+                                                        color = Color.Gray,
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 0.5.sp
+                                                    )
+                                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                                    FlowRow(
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
-                                                        if (isActive && grupo != "Sin grupos programados") {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(16.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                        gruposDeEstaAsig.forEach { grupo ->
+                                                            val isActive = grupo == grupoSeleccionado
+
+                                                            val chipBg by animateColorAsState(targetValue = if (isActive) Color(0xFF6200EE) else Color.White)
+                                                            val chipText by animateColorAsState(targetValue = if (isActive) Color.White else Color.DarkGray)
+                                                            val chipBorder by animateColorAsState(targetValue = if (isActive) Color(0xFF6200EE) else Color(0xFFE0E0E0))
+
+                                                            Surface(
+                                                                shape = RoundedCornerShape(20.dp),
+                                                                color = chipBg,
+                                                                border = BorderStroke(1.dp, chipBorder),
+                                                                modifier = Modifier.clickable {
+                                                                    if (grupo != "Sin grupos programados") {
+                                                                        seleccionadas[asig._id] = grupo
+                                                                    }
+                                                                }
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                                                ) {
+                                                                    if (isActive && grupo != "Sin grupos programados") {
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.Check,
+                                                                            contentDescription = null,
+                                                                            tint = Color.White,
+                                                                            modifier = Modifier.size(16.dp)
+                                                                        )
+                                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                                    }
+                                                                    Text(
+                                                                        text = grupo,
+                                                                        color = chipText,
+                                                                        fontSize = 13.sp,
+                                                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                                                    )
+                                                                }
+                                                            }
                                                         }
-                                                        Text(
-                                                            text = grupo,
-                                                            color = chipText,
-                                                            fontSize = 13.sp,
-                                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                                                        )
                                                     }
                                                 }
                                             }
@@ -351,6 +422,46 @@ fun MatriculacionScreen(onBack: () -> Unit) {
                                 }
                             }
                         }
+                    }
+                }
+
+                PullToRefreshContainer(
+                    state = pullRefreshState,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    containerColor = Color.White,
+                    contentColor = Color(0xFF6200EE)
+                )
+            }
+
+            if (pullRefreshState.isRefreshing) {
+                LaunchedEffect(true) {
+                    try {
+                        HorarioRepository.limpiarCache()
+
+                        val resAsignaturas = HorarioRepository.getAsignaturas(forzarRecarga = true).distinctBy { it._id }
+                        asignaturas = resAsignaturas.sortedWith(compareBy({ it.curso ?: 99 }, { it.cuatrimestre }))
+
+                        val perfilUsuario = UsuarioRepository.getUsuario(UserSession.usuarioId, forzarRecarga = true)
+
+                        seleccionadas.clear()
+                        perfilUsuario.asignaturasMatriculadas.forEach { matricula ->
+                            seleccionadas[matricula.asignaturaId] = matricula.grupo
+                        }
+
+                        // Reevaluar expansiones al refrescar
+                        val titulacionesConSeleccion = seleccionadas.keys.mapNotNull { id ->
+                            resAsignaturas.find { it._id == id }?.titulacion ?: "Otras Titulaciones"
+                        }.toSet()
+
+                        resAsignaturas.map { it.titulacion ?: "Otras Titulaciones" }.distinct().forEach { tit ->
+                            expandedTitulaciones[tit] = titulacionesConSeleccion.contains(tit)
+                        }
+
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(context, "Error al actualizar asignaturas", Toast.LENGTH_SHORT).show()
+                    } finally {
+                        pullRefreshState.endRefresh()
                     }
                 }
             }

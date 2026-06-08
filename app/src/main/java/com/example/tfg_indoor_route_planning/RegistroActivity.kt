@@ -37,8 +37,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tfg_indoor_route_planning.api.RegistroRequest
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
+import com.example.tfg_indoor_route_planning.api.dto.RegistroRequest
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -273,8 +273,13 @@ fun RegistroScreen(
                             isLoading = true
                             coroutineScope.launch {
                                 try {
-                                    val request = RegistroRequest(idInput.trim(), nombreInput.trim(), passwordInput.trim(), rolSeleccionado)
-                                    val response = RetrofitClient.apiService.registrarUsuario(request)
+                                    val request = RegistroRequest(
+                                        idInput.trim(),
+                                        nombreInput.trim(),
+                                        passwordInput.trim(),
+                                        rolSeleccionado
+                                    )
+                                    val response = RetrofitClient.authService.registrarUsuario(request)
 
                                     if (response.isSuccessful) {
                                         Toast.makeText(context, "¡Cuenta creada con éxito!", Toast.LENGTH_LONG).show()

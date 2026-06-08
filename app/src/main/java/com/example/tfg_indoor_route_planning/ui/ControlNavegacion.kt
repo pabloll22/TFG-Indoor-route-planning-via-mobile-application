@@ -50,7 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tfg_indoor_route_planning.api.RetrofitClient
-import com.example.tfg_indoor_route_planning.horario.SesionRespuesta
+import com.example.tfg_indoor_route_planning.api.dto.SesionRespuesta
 import com.example.tfg_indoor_route_planning.models.POI
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -92,7 +92,7 @@ fun BoxScope.ControlesNavegacion(
         if (!UserSession.esInvitado) {
             try {
                 // Descargamos el horario (Alumno o Profesor)
-                val miHorario = RetrofitClient.apiService.getHorario(usuarioId)
+                val miHorario = RetrofitClient.horarioService.getHorario(usuarioId)
 
                 // Extraemos solo los IDs y los guardamos en el Set para buscar rápido
                 misClasesIds = miHorario.map { it._id }.toSet()
@@ -248,7 +248,7 @@ fun BoxScope.ControlesNavegacion(
                 if (!modoSeleccionAula && mostrarInfoExtra && clasesDelAula.isEmpty() && esAulaOLab) {
                     cargandoClases = true
                     try {
-                        val todasLasClases = RetrofitClient.apiService.getHorarioAulaHoy(poi.nodoId)
+                        val todasLasClases = RetrofitClient.horarioService.getHorarioAulaHoy(poi.nodoId)
                         val mesActual = java.time.LocalDate.now().monthValue
                         val cuatrimestreActual = when (mesActual) {
                             9, 10, 11, 12, 1 -> 1

@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tfg_indoor_route_planning.api.PoiFavorito
+import com.example.tfg_indoor_route_planning.api.dto.PoiFavorito
 import com.example.tfg_indoor_route_planning.models.POI
 
 @OptIn(ExperimentalMaterial3Api::class)

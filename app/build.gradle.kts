@@ -76,6 +76,8 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.5.0")
 
+    implementation("androidx.compose.material3:material3:1.2.1")
+
     // AltBeacon Library for BLE
     implementation(libs.android.beacon.library)
 }

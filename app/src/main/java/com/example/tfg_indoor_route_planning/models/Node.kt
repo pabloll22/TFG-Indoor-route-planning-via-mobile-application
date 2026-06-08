@@ -8,7 +8,8 @@ data class Node(
     val position: PointMeters,
     val name: String? = null,
     val plantaId: String,
-    val neighbors: List<String> = emptyList()
+    val neighbors: List<String> = emptyList(),
+    val tipo: String? = "NORMAL"
 ) {
     // Lista de nodos adyacentes (conectados directamente)
 
