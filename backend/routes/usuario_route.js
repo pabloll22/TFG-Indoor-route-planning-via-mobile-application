@@ -4,7 +4,7 @@ const multer = require('multer');
 const verificarToken = require('../middleware/verificarToken');
 
 // Cloudinary
-const cloudinary = require('cloudinary').v2;
+const cloudinary = require('cloudinary');
 
 const multerCloudinary = require('multer-storage-cloudinary');
 const CloudinaryStorage = multerCloudinary.CloudinaryStorage || multerCloudinary;
@@ -24,7 +24,7 @@ console.log("API_KEY:", process.env.CLOUDINARY_API_KEY ? "OK" : "NO ENCONTRADA")
 console.log("API_SECRET:", process.env.CLOUDINARY_API_SECRET ? "OK" : "NO ENCONTRADA");
 console.log("====================================");
 
-cloudinary.config({
+cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET
@@ -33,7 +33,7 @@ cloudinary.config({
 // Comprobación de conectividad con Cloudinary
 (async () => {
     try {
-        const result = await cloudinary.api.ping();
+        const result = await cloudinary.v2.api.ping();
         console.log("✅ CLOUDINARY PING OK:", result);
     } catch (err) {
         console.error("❌ CLOUDINARY PING ERROR:");
@@ -47,7 +47,6 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    // Fíjate que params ahora es un OBJETO directo, no una función
     params: {
         folder: 'tfg_perfiles',
         allowed_formats: ['jpg', 'jpeg', 'png']
@@ -65,7 +64,7 @@ const upload = multer({
 
 router.get('/test-cloudinary', async (req, res) => {
     try {
-        const result = await cloudinary.api.ping();
+        const result = await cloudinary.v2.api.ping();
 
         console.log("✅ TEST CLOUDINARY:", result);
 
