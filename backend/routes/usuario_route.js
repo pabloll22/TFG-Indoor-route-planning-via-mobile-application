@@ -25,7 +25,10 @@ const storage = new CloudinaryStorage({
         public_id: (req, file) => {
             // Sacamos el ID para nombrar el archivo en la nube de forma única
             const id = req.usuario.id || req.usuario._id || req.usuario.idUsuario || 'usuario';
-            return `${id}_${Date.now()}`;
+            // Generamos el nombre y eliminamos RADICALMENTE cualquier espacio oculto o salto de línea
+            const nombre = `${id}_${Date.now()}`.trim().replace(/\s+/g, '');
+
+            return nombre;
         }
     }
 });
@@ -37,21 +40,7 @@ const upload = multer({ storage: storage });
 // ==========================================
 
 // Subir foto de perfil (upload.single envía la foto directamente a Cloudinary)
-//router.post('/foto', verificarToken, upload.single('foto'), usuarioController.subirFoto);
-
-router.post('/foto', verificarToken, (req, res, next) => {
-    const middlewareSubida = upload.single('foto');
-
-    middlewareSubida(req, res, function (err) {
-        if (err) {
-            console.error("❌ ERROR REAL DE CLOUDINARY:", JSON.stringify(err, null, 2));
-            if (err.message) console.error("Detalle:", err.message);
-            return res.status(500).json({ error: "Fallo al subir imagen", detalles: err });
-        }
-        // Si no hay error, pasamos al controlador
-        next();
-    });
-}, usuarioController.subirFoto);
+router.post('/foto', verificarToken, upload.single('foto'), usuarioController.subirFoto);
 
 // Gestión de usuarios (Panel Admin)
 router.get('/todos', usuarioController.getTodosUsuarios);
