@@ -16,7 +16,7 @@ exports.subirFoto = async (req, res) => {
         }
 
         // Al usar Cloudinary, 'req.file.path' contiene la URL pública e idónea de internet (https://res.cloudinary.com/...)
-        const urlFinal = req.file.path;
+        const urlFinal = req.file.secure_url || req.file.path;
         const idRealDelUsuario = obtenerIdUsuario(req);
 
         const usuarioActualizado = await Usuario.findByIdAndUpdate(
