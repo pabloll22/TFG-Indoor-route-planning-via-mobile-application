@@ -1,35 +1,41 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
 const verificarToken = require('../middleware/verificarToken');
+
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 // Importamos el controlador
 const usuarioController = require('../controllers/usuario_controller');
 
-// Pequeño helper necesario para configurar Multer aquí
-const obtenerIdUsuario = (req) => {
-    return req.usuario.id || req.usuario._id || req.usuario.idUsuario;
-};
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-// Configuración de Multer
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/perfiles/');
-    },
-    filename: (req, file, cb) => {
-        const id = obtenerIdUsuario(req);
-        const ext = path.extname(file.originalname);
-        cb(null, `${id}_${Date.now()}${ext}`);
+// Configuración del almacenamiento en la nube
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'tfg_perfiles', // Nombre de la carpeta que se creará en tu panel de Cloudinary
+        allowed_formats: ['jpg', 'png', 'jpeg'], // Formatos permitidos
+        public_id: (req, file) => {
+            // Sacamos el ID para nombrar el archivo en la nube de forma única
+            const id = req.usuario.id || req.usuario._id || req.usuario.idUsuario || 'usuario';
+            return `${id}_${Date.now()}`;
+        }
     }
 });
+
 const upload = multer({ storage: storage });
 
 // ==========================================
 // RUTAS DE USUARIOS
 // ==========================================
 
-// Subir foto de perfil (Requiere token y el middleware de Multer)
+// Subir foto de perfil (upload.single envía la foto directamente a Cloudinary)
 router.post('/foto', verificarToken, upload.single('foto'), usuarioController.subirFoto);
 
 // Gestión de usuarios (Panel Admin)

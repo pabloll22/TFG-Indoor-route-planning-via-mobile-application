@@ -15,24 +15,26 @@ exports.subirFoto = async (req, res) => {
             return res.status(400).json({ error: 'No se subió ninguna imagen' });
         }
 
-        const urlFinal = `${req.protocol}://${req.get('host')}/uploads/perfiles/${req.file.filename}`;
+        // Al usar Cloudinary, 'req.file.path' contiene la URL pública e idónea de internet (https://res.cloudinary.com/...)
+        const urlFinal = req.file.path;
         const idRealDelUsuario = obtenerIdUsuario(req);
 
         const usuarioActualizado = await Usuario.findByIdAndUpdate(
-            idRealDelUsuario,          
-            { foto_url: urlFinal },    
-            { returnDocument: 'after' } 
+            idRealDelUsuario,
+            { foto_url: urlFinal },
+            { returnDocument: 'after' }
         );
 
         if (!usuarioActualizado) {
             return res.status(404).json({ error: 'Usuario no encontrado en la base de datos' });
         }
 
-        res.json({ mensaje: 'Foto actualizada', url: urlFinal });
+        console.log(`[ÉXITO] Foto subida permanentemente a Cloudinary: ${urlFinal}`);
+        res.json({ mensaje: 'Foto actualizada permanentemente', url: urlFinal });
 
     } catch (error) {
-        console.error("Error al guardar la foto:", error);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        console.error("Error al guardar la foto en Cloudinary:", error);
+        res.status(500).json({ error: 'Error interno del servidor al procesar la imagen' });
     }
 };
 
@@ -97,7 +99,7 @@ exports.editarUsuario = async (req, res) => {
         const usuarioActualizado = await Usuario.findOneAndUpdate(
             { idUsuario: idUsuario },
             { $set: datosAActualizar },
-            { new: true } 
+            { new: true }
         );
 
         if (!usuarioActualizado) {
@@ -138,7 +140,6 @@ exports.actualizarAccesibilidad = async (req, res) => {
         const { idUsuario } = req.params;
         const { rutasAccesibles } = req.body;
 
-        // Validamos que nos llegue el booleano
         if (typeof rutasAccesibles !== 'boolean') {
             return res.status(400).json({ error: "El campo rutasAccesibles debe ser un booleano (true/false)" });
         }
@@ -146,7 +147,7 @@ exports.actualizarAccesibilidad = async (req, res) => {
         const usuarioActualizado = await Usuario.findOneAndUpdate(
             { idUsuario: idUsuario },
             { $set: { rutasAccesibles: rutasAccesibles } },
-            { new: true } // Para que devuelva el documento modificado
+            { new: true }
         );
 
         if (!usuarioActualizado) {
