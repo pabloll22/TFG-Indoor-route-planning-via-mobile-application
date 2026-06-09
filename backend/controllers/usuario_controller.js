@@ -15,8 +15,7 @@ exports.subirFoto = async (req, res) => {
             return res.status(400).json({ error: 'No se subió ninguna imagen' });
         }
 
-        // Al usar Cloudinary, 'req.file.path' contiene la URL pública e idónea de internet (https://res.cloudinary.com/...)
-        const urlFinal = req.file.secure_url || req.file.path;
+        const urlFinal = req.file.secure_url;
         const idRealDelUsuario = obtenerIdUsuario(req);
 
         const usuarioActualizado = await Usuario.findByIdAndUpdate(
