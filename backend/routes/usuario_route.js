@@ -4,8 +4,10 @@ const multer = require('multer');
 const verificarToken = require('../middleware/verificarToken');
 
 // Cloudinary
-const { v2: cloudinary } = require('cloudinary');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
+
+const multerCloudinary = require('multer-storage-cloudinary');
+const CloudinaryStorage = multerCloudinary.CloudinaryStorage || multerCloudinary;
 
 // Importamos el controlador
 const usuarioController = require('../controllers/usuario_controller');
@@ -44,14 +46,11 @@ cloudinary.config({
 // ===================================================
 
 const storage = new CloudinaryStorage({
-    cloudinary,
+    cloudinary: cloudinary,
     params: async (req, file) => {
 
-        console.log("====================================");
         console.log("🚀 INICIANDO SUBIDA A CLOUDINARY");
         console.log("Archivo:", file.originalname);
-        console.log("Mimetype:", file.mimetype);
-        console.log("====================================");
 
         return {
             folder: 'tfg_perfiles',
