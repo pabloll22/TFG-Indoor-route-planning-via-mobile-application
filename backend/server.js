@@ -18,7 +18,7 @@ mongoose.connect(mongoURI)
     .then(() => console.log('✅ Conectado a la base de datos MongoDB (tfg_indoor)'))
     .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
-const dir = './uploads/perfiles';
+const dir = './uploads/perfiles/';
 if (!fs.existsSync(dir)){
     fs.mkdirSync(dir, { recursive: true });
     console.log('📁 Carpeta "uploads" creada en el servidor');
