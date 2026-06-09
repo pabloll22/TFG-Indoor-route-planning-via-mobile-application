@@ -1,6 +1,7 @@
+require('dotenv').config();
 const jwt = require('jsonwebtoken');
 
-const SECRET_KEY = "clave_secreta_tfg_uma_2026"; 
+const SECRET_KEY = process.env.JWT_SECRET; 
 
 const verificarToken = (req, res, next) => {
     // 1. Buscamos la cabecera "Authorization"
