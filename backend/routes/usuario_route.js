@@ -40,7 +40,21 @@ const upload = multer({ storage: storage });
 // ==========================================
 
 // Subir foto de perfil (upload.single envía la foto directamente a Cloudinary)
-router.post('/foto', verificarToken, upload.single('foto'), usuarioController.subirFoto);
+//router.post('/foto', verificarToken, upload.single('foto'), usuarioController.subirFoto);
+
+router.post('/foto', verificarToken, (req, res, next) => {
+    const middlewareSubida = upload.single('foto');
+
+    middlewareSubida(req, res, function (err) {
+        if (err) {
+            console.error("❌ ERROR REAL DE CLOUDINARY:", JSON.stringify(err, null, 2));
+            if (err.message) console.error("Detalle:", err.message);
+            return res.status(500).json({ error: "Fallo al subir imagen", detalles: err });
+        }
+        // Si no hay error, pasamos al controlador
+        next();
+    });
+}, usuarioController.subirFoto);
 
 // Gestión de usuarios (Panel Admin)
 router.get('/todos', usuarioController.getTodosUsuarios);
