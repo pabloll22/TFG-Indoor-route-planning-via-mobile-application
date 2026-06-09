@@ -47,20 +47,16 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: async (req, file) => {
-
-        console.log("🚀 INICIANDO SUBIDA A CLOUDINARY");
-        console.log("Archivo:", file.originalname);
-
-        return {
-            folder: 'tfg_perfiles',
-            allowed_formats: ['jpg', 'jpeg', 'png']
-        };
+    // Fíjate que params ahora es un OBJETO directo, no una función
+    params: {
+        folder: 'tfg_perfiles',
+        allowed_formats: ['jpg', 'jpeg', 'png']
+        // Cloudinary se encargará del public_id
     }
 });
 
 const upload = multer({
-    storage
+    storage: storage
 });
 
 // ===================================================
