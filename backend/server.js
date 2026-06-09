@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 const mapasRoutes = require('./routes/mapas_routes'); // Importamos las rutas
 const horariosRoutes = require('./routes/horarios_route');
 const authRoutes = require('./routes/auth_routes');
