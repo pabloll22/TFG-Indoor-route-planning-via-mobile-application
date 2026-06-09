@@ -11,8 +11,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object RetrofitClient {
 
-    // const val BASE_URL = "http://192.168.137.1:3000"
-    const val BASE_URL = "http://192.168.1.49:3000/"
+    const val BASE_URL = "https://tfg-controluma.onrender.com/"
+    //const val BASE_URL = "http://192.168.1.49:3000/"
 
     private val authInterceptor = Interceptor { chain ->
         val peticionOriginal = chain.request()
