@@ -19,17 +19,14 @@ cloudinary.config({
 // Configuración del almacenamiento en la nube
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'tfg_perfiles', // Nombre de la carpeta que se creará en tu panel de Cloudinary
-        allowed_formats: ['jpg', 'png', 'jpeg'], // Formatos permitidos
-        public_id: (req, file) => {
-            // Sacamos el ID para nombrar el archivo en la nube de forma única
-            const id = req.usuario.id || req.usuario._id || req.usuario.idUsuario || 'usuario';
-            // Generamos el nombre y eliminamos RADICALMENTE cualquier espacio oculto o salto de línea
-            const nombre = `${id}_${Date.now()}`.trim().replace(/\s+/g, '');
+    params: async (req, file) => {
+        console.log("🚀 Iniciando subida a Cloudinary...");
 
-            return nombre;
-        }
+        return {
+            folder: 'tfg_perfiles',
+            format: 'jpg',
+            public_id: 'foto_prueba_' + Date.now()
+        };
     }
 });
 
