@@ -24,8 +24,8 @@ const storage = new CloudinaryStorage({
 
         return {
             folder: 'tfg_perfiles',
-            format: 'jpg',
-            public_id: 'foto_prueba_' + Date.now()
+            allowed_formats: ['jpg', 'png', 'jpeg']
+            //public_id: 'foto_prueba_' + Date.now()
         };
     }
 });
