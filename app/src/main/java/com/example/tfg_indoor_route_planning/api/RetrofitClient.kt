@@ -35,6 +35,9 @@ object RetrofitClient {
     // CREAMOS EL CLIENTE HTTP Y LE ASIGNAMOS EL INTERCEPTOR
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
+        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()

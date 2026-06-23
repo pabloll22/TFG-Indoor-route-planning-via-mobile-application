@@ -27,7 +27,7 @@ class GraphEngine(private val nodesList: List<Node>) {
     /**
      * Calcula el nodo lógico más coherente basándose en la posición física.
      */
-    fun snapToGraph(rawPosition: PointMeters, plantaActualId: String, noHayRutaCalculada: Boolean): Node? {
+    fun snapToGraph(rawPosition: PointMeters, plantaActualId: String?, noHayRutaCalculada: Boolean): Node? {
         // CASO 1: Arranque en frío. No tenemos nodo previo.
 
         val saltoPermitido = (currentUserNode?.plantaId != plantaActualId) && noHayRutaCalculada
@@ -155,8 +155,13 @@ class GraphEngine(private val nodesList: List<Node>) {
                 if (nodeA.tipo == "ESCALERA" || nodeB.tipo == "ESCALERA") {
                     return Float.POSITIVE_INFINITY // Prohibido pasar por aquí
                 }
+            }else{
+                if (nodeA.tipo == "ASCENSOR" || nodeB.tipo == "ASCENSOR") {
+                    return 50.0f
+                }else{
+                    return 5.0f
+                }
             }
-            return 5.0f //subir/bajar escaleras
         }
         val dx = nodeA.position.x - nodeB.position.x
         val dy = nodeA.position.y - nodeB.position.y

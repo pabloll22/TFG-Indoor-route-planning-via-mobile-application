@@ -18,9 +18,9 @@ router.get('/hoy/:usuarioId', verificarToken, horariosController.getHorarioProfe
 router.get('/aula/:nodoId', horariosController.getClasesAula);
 router.post('/sesion/:sesionId/cancelar', verificarToken, horariosController.cancelarSesion);
 router.post('/sesion/:sesionId/restaurar', verificarToken, horariosController.restaurarSesion);
-router.post('/sesion/crear', horariosController.crearSesion); // Sin verificarToken
-router.delete('/sesiones/:id', horariosController.borrarSesion);
-router.put('/sesiones/:id', horariosController.editarSesion);
+router.post('/sesion/crear', verificarToken, horariosController.crearSesion);
+router.delete('/sesiones/:id', verificarToken, horariosController.borrarSesion);
+router.put('/sesiones/:id', verificarToken, horariosController.editarSesion);
 
 // ==========================================
 // RUTAS DE USUARIOS
@@ -34,9 +34,11 @@ router.put('/usuarios/:idUsuario/matricula', verificarToken, horariosController.
 // RUTAS ADMINISTRACIÓN (PANEL WEB)
 // ==========================================
 router.get('/asignaturas', horariosController.getAsignaturas);
-router.post('/asignaturas', horariosController.crearAsignatura);
-router.put('/asignaturas/:id', horariosController.editarAsignatura);
-router.delete('/asignaturas/:id', horariosController.borrarAsignatura);
 router.get('/asignaturas/:asignaturaId/sesiones', horariosController.getSesionesAsignatura);
+
+router.post('/asignaturas', verificarToken, horariosController.crearAsignatura);
+router.put('/asignaturas/:id', verificarToken, horariosController.editarAsignatura);
+router.delete('/asignaturas/:id', verificarToken, horariosController.borrarAsignatura);
+
 
 module.exports = router;

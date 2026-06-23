@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -297,6 +298,10 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                 var tempFile: File? = null
                 try {
                     tempFile = uriToFile(context, imagenSeleccionada)
+                    android.util.Log.d(
+                        "TFG_FOTO_DEBUG",
+                        "Tamaño archivo = ${tempFile?.length()} bytes"
+                    )
 
                     if (tempFile != null) {
                         val requestFile = tempFile.asRequestBody("image/*".toMediaTypeOrNull())
@@ -320,6 +325,7 @@ fun ProfileMenuContent(onCerrarSesion: () -> Unit) {
                         Toast.makeText(context, "❌ Error al procesar la imagen local", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
+                    android.util.Log.e("TFG_FOTO_APP", "¡CRASH AL SUBIR FOTO!", e)
                     Toast.makeText(context, "Error de conexión al subir la foto", Toast.LENGTH_SHORT).show()
                 } finally {
                     isLoadingFoto = false

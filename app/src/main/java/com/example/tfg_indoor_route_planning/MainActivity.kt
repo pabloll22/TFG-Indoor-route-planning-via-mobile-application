@@ -137,7 +137,8 @@ class MainActivity : ComponentActivity() {
     data class BeaconState(var smoothedRssi: Double, var lastSeenTimestamp: Long)
 
     // Variables globales para tu lógica de escaneo
-    private val activeBeacons = mutableMapOf<String, BeaconState>()
+    //private val activeBeacons = mutableMapOf<String, BeaconState>()
+    private val activeBeacons = java.util.concurrent.ConcurrentHashMap<String, BeaconState>()
     private val RSSI_ALPHA = 0.15 // Factor de suavizado (ajusta entre 0.1 y 0.3)
     private val STALE_TIMEOUT_MS = 3000L // Si pasan 3 segundos sin escuchar un beacon, lo borramos
     private var ancho: Float = 0.0f
@@ -150,6 +151,12 @@ class MainActivity : ComponentActivity() {
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+
+    private var plantaFisicaId by mutableStateOf<String?>(null)
+
+    private var plantaCandidataId: String? = null
+    private var votosPlantaCandidata = 0
+    private var todosLosBeaconsDelEdificio: Map<String, PointMeters> = emptyMap()
 
     @SuppressLint("MissingPermission")
     private val permissionLauncher = registerForActivityResult(
@@ -436,7 +443,7 @@ class MainActivity : ComponentActivity() {
                                 CircularProgressIndicator()
                             }
                         } else {
-                            val rutaParaDibujar = if (rutaCalculada.isNotEmpty()) {
+                            /*val rutaParaDibujar = if (rutaCalculada.isNotEmpty()) {
                                 val rutaCortada = dividirRutaPorPlantas(rutaCalculada) // Asegúrate de tener esta función creada
 
                                 if (rutaCortada.hayCambioDePlanta && plantaActivaId == rutaCalculada.firstOrNull()?.plantaId) {
@@ -456,6 +463,26 @@ class MainActivity : ComponentActivity() {
                                 }
                             } else {
                                 emptyList()
+                            }*/
+
+                            val rutaParaDibujar = rutaCalculada
+
+                            plantaQueDebeParpadearId = null // Por defecto apagado
+
+                            if (rutaCalculada.isNotEmpty()) {
+                                // Recorremos la ruta buscando el momento exacto en el que cambiamos de piso
+                                for (i in 0 until rutaCalculada.size - 1) {
+                                    val nodoActual = rutaCalculada[i]
+                                    val nodoSiguiente = rutaCalculada[i + 1]
+
+                                    // Si la ruta pasa por la planta que estoy viendo AHORA MISMO,
+                                    // y el siguiente paso de la ruta es irse a otra planta...
+                                    if (nodoActual.plantaId == plantaActivaId && nodoSiguiente.plantaId != plantaActivaId) {
+                                        // ... entonces esa otra planta es la que debe parpadear para guiarme.
+                                        plantaQueDebeParpadearId = nodoSiguiente.plantaId
+                                        break // Ya hemos encontrado el siguiente piso, dejamos de buscar
+                                    }
+                                }
                             }
 
                             // Usamos un Box principal para que la Tarjeta y el Botón floten por encima de tu diseño
@@ -863,19 +890,29 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                Text(
+                    text = "Planta Física: $plantaFisicaId\nPlanta Vista: $plantaActivaId",
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp).background(Color.White.copy(alpha = 0.7f))
+                )
+
                 // 2. DIBUJO DE LA RUTA (CANVAS)
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     if (rutaCalculada.size > 1) {
                         for (i in 0 until rutaCalculada.size - 1) {
                             val startNode = rutaCalculada[i]
                             val endNode = rutaCalculada[i + 1]
-                            drawLine(
-                                color = Color.Blue,
-                                start = Offset(startNode.position.x * scaleX, startNode.position.y * scaleY),
-                                end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
-                                strokeWidth = 12f,
-                                cap = androidx.compose.ui.graphics.StrokeCap.Round
-                            )
+
+                            if (startNode.plantaId == plantaActivaId && endNode.plantaId == plantaActivaId) {
+                                drawLine(
+                                    color = Color.Blue,
+                                    start = Offset(startNode.position.x * scaleX, startNode.position.y * scaleY),
+                                    end = Offset(endNode.position.x * scaleX, endNode.position.y * scaleY),
+                                    strokeWidth = 12f,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                            }
                         }
                     }
 
@@ -939,34 +976,37 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                // 5. POSICIÓN DEL USUARIO (Círculo Azul)
-                userPosition?.let { pos ->
-                    val xDp = with(density) { (pos.x * scaleX).toDp() }
-                    val yDp = with(density) { (pos.y * scaleY).toDp() }
-                    Box(
-                        modifier = Modifier
-                            .offset(xDp, yDp)
-                            .size(15.dp)
-                            .background(Color.Blue, shape = CircleShape)
-                            .border(2.dp, Color.White, CircleShape)
-                    )
+                if (plantaActivaId == plantaFisicaId) {
+                    // 5. POSICIÓN DEL USUARIO (Círculo Azul)
+                    userPosition?.let { pos ->
+                        val xDp = with(density) { (pos.x * scaleX).toDp() }
+                        val yDp = with(density) { (pos.y * scaleY).toDp() }
+                        Box(
+                            modifier = Modifier
+                                .offset(xDp, yDp)
+                                .size(15.dp)
+                                .background(Color.Blue, shape = CircleShape)
+                                .border(2.dp, Color.White, CircleShape)
+                        )
+                    }
+
+                    // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
+                    currentUserNode?.let { node ->
+                        val xDp = with(density) { (node.position.x * scaleX).toDp() }
+                        val yDp = with(density) { (node.position.y * scaleY).toDp() }
+                        val colorNodo = if (esSimulacion) Color(0xFFFF5722) else Color.Magenta
+                        Icon(
+                            imageVector = Icons.Filled.Navigation,
+                            contentDescription = null,
+                            tint = colorNodo,
+                            modifier = Modifier
+                                .offset(xDp - 4.dp, yDp - 4.dp)
+                                .size(8.dp)
+                                .rotate(userOrientation)
+                        )
+                    }
                 }
 
-                // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
-                currentUserNode?.let { node ->
-                    val xDp = with(density) { (node.position.x * scaleX).toDp() }
-                    val yDp = with(density) { (node.position.y * scaleY).toDp() }
-                    val colorNodo = if (esSimulacion) Color(0xFFFF5722) else Color.Magenta
-                    Icon(
-                        imageVector = Icons.Filled.Navigation,
-                        contentDescription = null,
-                        tint = colorNodo,
-                        modifier = Modifier
-                            .offset(xDp - 4.dp, yDp - 4.dp)
-                            .size(8.dp)
-                            .rotate(userOrientation)
-                    )
-                }
 
                 // 7. PUNTOS DE INTERÉS (POIs)
                 pois.forEach { poi ->
@@ -1042,8 +1082,11 @@ class MainActivity : ComponentActivity() {
                     val todosLosNodosDelEdificio = mapa.plantas.flatMap { it.nodos }
                     todosLosPoisDelEdificio = mapa.plantas.flatMap { it.pois }
 
+                    todosLosBeaconsDelEdificio = mapa.plantas.flatMap { it.knownBeacons.entries }
+                        .associate { it.key to it.value }
+
                     // Inicializamos los motores
-                    engine = PositioningEngine(knownBeacons, ancho, largo)
+                    engine = PositioningEngine(todosLosBeaconsDelEdificio, ancho, largo)
                     graphEngine = GraphEngine(todosLosNodosDelEdificio)
 
                     // Todo listo, quitamos la pantalla de carga
@@ -1073,17 +1116,17 @@ class MainActivity : ComponentActivity() {
             planoFondo = base64ToImageBitmap(planta.imagenBase64)
 
             // 3. RESETEO TOTAL DE VARIABLES DE POSICIONAMIENTO
-            if (rutaCalculada.isEmpty()) {
+            /*if (rutaCalculada.isEmpty()) {
                 devices.clear()
                 currentSmoothedPosition = null
                 lastDrawnPosition = null
 
                 currentUserNode = null
                 userPosition = null
-            }
+            }*/
 
             // IMPORTANTE: El motor de posicionamiento SÍ se reinicia con los beacons de esta planta
-            engine = PositioningEngine(knownBeacons, ancho, largo)
+            //engine = PositioningEngine(knownBeacons, ancho, largo)
             plantaActivaId=planta.plantaId
             //graphEngine = GraphEngine(nodes)
 
@@ -1109,7 +1152,7 @@ class MainActivity : ComponentActivity() {
 
             val macAddress = result.device.address
 
-            if (knownBeacons.containsKey(macAddress)) {
+            if (todosLosBeaconsDelEdificio.containsKey(macAddress)) {
 
                 val currentTime = System.currentTimeMillis()
                 val rawRssi = result.rssi.toDouble()
@@ -1140,6 +1183,58 @@ class MainActivity : ComponentActivity() {
                     activeBeacons.entries.removeIf {
                         currentTime - it.value.lastSeenTimestamp > STALE_TIMEOUT_MS
                     }
+
+                    val strongestBeaconMac = activeBeacons.maxByOrNull { it.value.smoothedRssi }?.key
+
+                    if (strongestBeaconMac != null) {
+                        // Buscamos a qué planta pertenece el beacon más fuerte de este segundo
+                        val plantaDelBeaconGanador = mapaDescargado?.plantas?.find {
+                            it.knownBeacons.containsKey(strongestBeaconMac)
+                        }?.plantaId
+
+                        if (plantaDelBeaconGanador != null) {
+                            // Si la planta del beacon es DIFERENTE a la que tenemos guardada como nuestra planta real actual
+                            if (plantaDelBeaconGanador != plantaFisicaId) {
+
+                                // Si coincide con la planta que ya venía "en racha" ganando segundos anteriores
+                                if (plantaDelBeaconGanador == plantaCandidataId) {
+                                    votosPlantaCandidata++
+                                } else {
+                                    // Si es una planta nueva, reiniciamos la racha y la marcamos como candidata
+                                    plantaCandidataId = plantaDelBeaconGanador
+                                    votosPlantaCandidata = 1
+                                }
+
+                                // Requerimos 3 votos consecutivos (es decir, 3 segundos seguidos manteniendo el liderato)
+                                val VOTOS_REQUERIDOS = 3
+
+                                if (votosPlantaCandidata >= VOTOS_REQUERIDOS) {
+                                    val antiguaPlanta = plantaFisicaId
+                                    plantaFisicaId = plantaCandidataId // Confirmamos el cambio real
+
+                                    // Si la pantalla no estaba mostrando ya la nueva planta, la forzamos a cambiar
+                                    if (plantaActivaId != plantaFisicaId) {
+                                        cambiarDePlanta(plantaFisicaId!!)
+                                        Log.d(TAG, "🔼 [VOTACIÓN] Cambio confirmado de $antiguaPlanta a $plantaFisicaId tras $VOTOS_REQUERIDOS segundos estables.")
+                                    }
+
+                                    // Limpiamos la candidatura tras haber ganado
+                                    plantaCandidataId = null
+                                    votosPlantaCandidata = 0
+                                } else {
+                                    Log.d(TAG, "⏳ [VOTACIÓN] Planta $plantaDelBeaconGanador pide paso. Votos: $votosPlantaCandidata/$VOTOS_REQUERIDOS")
+                                }
+                            } else {
+                                // Si el beacon más fuerte sigue siendo de nuestra planta actual,
+                                // reiniciamos cualquier intento de golpe de estado de otra planta
+                                plantaCandidataId = null
+                                votosPlantaCandidata = 0
+                            }
+                        }
+                    }
+
+                    // Si por algún motivo aún no lo sabemos, asumimos la primera planta
+                    val plantaReal = plantaFisicaId ?: "planta_0"
 
                     // =========================
                     // 4. CALCULAR POSICIÓN (HÍBRIDO)
@@ -1204,26 +1299,25 @@ class MainActivity : ComponentActivity() {
                             // =========================
                             val snappedNode = graphEngine?.snapToGraph(
                                 currentSmoothedPosition!!,
-                                plantaActivaId ?: "planta_0",
+                                plantaReal,
                                 rutaCalculada.isEmpty()
                             )
 
-                            if (snappedNode != null && snappedNode.id != currentUserNode?.id) {
+                            if (snappedNode != null) {
+                                plantaFisicaId = snappedNode.plantaId
 
-                                if (modoNavegacionActiva && origenSeleccionadoId == null && destinoSeleccionadoId != null) {
-
-                                    val nuevaRuta = graphEngine?.findPath(
-                                        snappedNode.id,
-                                        destinoSeleccionadoId!!
-                                    )
-
-                                    if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
-                                        rutaCalculada = nuevaRuta
-                                        Log.d(TAG, "🔄 Ruta recalculada. Pasos: ${nuevaRuta.size}")
-                                    } else {
-                                        // Si da error, es mejor no vaciar la ruta calculada de golpe,
-                                        // por si es solo un pequeño error de cobertura de 1 segundo.
-                                        Log.d(TAG, "✅ Has llegado al destino o no se pudo recalcular.")
+                                if (snappedNode.id != currentUserNode?.id) {
+                                    if (modoNavegacionActiva && origenSeleccionadoId == null && destinoSeleccionadoId != null) {
+                                        val nuevaRuta = graphEngine?.findPath(
+                                            snappedNode.id,
+                                            destinoSeleccionadoId!!
+                                        )
+                                        if (nuevaRuta != null && nuevaRuta.isNotEmpty()) {
+                                            rutaCalculada = nuevaRuta
+                                            Log.d(TAG, "🔄 Ruta recalculada. Pasos: ${nuevaRuta.size}")
+                                        } else {
+                                            Log.d(TAG, "✅ Has llegado al destino o no se pudo recalcular.")
+                                        }
                                     }
                                 }
                             }
@@ -1245,7 +1339,7 @@ class MainActivity : ComponentActivity() {
             super.onBatchScanResults(results)
             results?.forEach { result ->
                 val macAddress = result.device.address
-                if (knownBeacons.containsKey(macAddress)) {
+                if (todosLosBeaconsDelEdificio.containsKey(macAddress)) {
                     val index = devices.indexOfFirst { it.device.address == macAddress }
                     if (index != -1) devices[index] = result else devices.add(result)
                 }

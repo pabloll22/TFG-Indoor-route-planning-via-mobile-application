@@ -141,10 +141,10 @@ router.post(
 // GESTIÓN DE USUARIOS
 // ===================================================
 
-router.get('/todos', usuarioController.getTodosUsuarios);
-router.post('/', usuarioController.crearUsuario);
-router.put('/:idUsuario', usuarioController.editarUsuario);
-router.delete('/:idUsuario', usuarioController.eliminarUsuario);
+router.get('/todos', verificarToken, usuarioController.getTodosUsuarios);
+router.post('/', verificarToken, usuarioController.crearUsuario);
+router.put('/:idUsuario', verificarToken, usuarioController.editarUsuario);
+router.delete('/:idUsuario', verificarToken, usuarioController.eliminarUsuario);
 
 router.put(
     '/:idUsuario/accesibilidad',
