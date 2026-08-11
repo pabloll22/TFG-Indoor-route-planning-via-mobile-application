@@ -126,16 +126,24 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val (bgColor, textColor, borderColor) = when (rolUsuario.uppercase()) {
+                        "PROFESOR" -> Triple(Color(0xFFFAF5FF), Color(0xFF7E22CE), Color(0xFFE9D5FF))
+                        "ALUMNO" -> Triple(Color(0xFFECFDF5), Color(0xFF047857), Color(0xFFA7F3D0))
+                        "ADMIN" -> Triple(Color(0xFFFEF2F2), Color(0xFFB91C1C), Color(0xFFFECACA))
+                        else -> Triple(Color(0xFFF3F4F6), Color(0xFF4B5563), Color(0xFFE5E7EB))
+                    }
+
                     Surface(
-                        color = Color(0xFF6200EE).copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = bgColor,
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
                     ) {
                         Text(
                             text = rolUsuario.uppercase(),
-                            color = Color(0xFF6200EE),
+                            color = textColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), // Un poco más de padding
                             letterSpacing = 1.sp
                         )
                     }

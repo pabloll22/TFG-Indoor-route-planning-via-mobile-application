@@ -831,7 +831,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // Variable para activar/desactivar las líneas con un botón
-        var mostrarGrafoDebug by remember { mutableStateOf(true) }
+        var mostrarGrafoDebug by remember { mutableStateOf(false) }
 
         BoxWithConstraints(
             modifier = modifier
@@ -890,12 +890,12 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                Text(
+                /*Text(
                     text = "Planta Física: $plantaFisicaId\nPlanta Vista: $plantaActivaId",
                     color = Color.Red,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(16.dp).background(Color.White.copy(alpha = 0.7f))
-                )
+                )*/
 
                 // 2. DIBUJO DE LA RUTA (CANVAS)
                 Canvas(modifier = Modifier.fillMaxSize()) {
@@ -950,7 +950,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // 3. NODOS DE NAVEGACIÓN
-                nodes.forEach { node ->
+                /*nodes.forEach { node ->
                     val xDp = with(density) { (node.position.x * scaleX).toDp() }
                     val yDp = with(density) { (node.position.y * scaleY).toDp() }
                     Box(
@@ -974,11 +974,11 @@ class MainActivity : ComponentActivity() {
                             .size(4.dp)
                             .background(Color.Red, shape = MaterialTheme.shapes.small)
                     )
-                }
+                }*/
 
                 if (plantaActivaId == plantaFisicaId) {
                     // 5. POSICIÓN DEL USUARIO (Círculo Azul)
-                    userPosition?.let { pos ->
+                    /*userPosition?.let { pos ->
                         val xDp = with(density) { (pos.x * scaleX).toDp() }
                         val yDp = with(density) { (pos.y * scaleY).toDp() }
                         Box(
@@ -988,7 +988,7 @@ class MainActivity : ComponentActivity() {
                                 .background(Color.Blue, shape = CircleShape)
                                 .border(2.dp, Color.White, CircleShape)
                         )
-                    }
+                    }*/
 
                     // 6. ICONO DE NAVEGACIÓN (Flecha Magenta)
                     currentUserNode?.let { node ->
@@ -1000,8 +1000,8 @@ class MainActivity : ComponentActivity() {
                             contentDescription = null,
                             tint = colorNodo,
                             modifier = Modifier
-                                .offset(xDp - 4.dp, yDp - 4.dp)
-                                .size(8.dp)
+                                .offset(xDp - 6.dp, yDp - 6.dp)
+                                .size(12.dp)
                                 .rotate(userOrientation)
                         )
                     }
