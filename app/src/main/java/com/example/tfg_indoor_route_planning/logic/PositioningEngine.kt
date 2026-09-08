@@ -54,7 +54,7 @@ class PositioningEngine(
             centroid
         }
 
-        return centroid
+        return fused
     }
 
     /**
